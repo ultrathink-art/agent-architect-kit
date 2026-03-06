@@ -96,14 +96,38 @@ Verify: Next completed coder task auto-spawns QA child
 
 **Every fix must be:** edit a file, tighten a rule, add a gate, improve a script. If the fix requires production app code, create a coder task with exact requirements.
 
-### 4. Process & Workflow Improvement
+### 4. Memory & Knowledge Curation (EVERY SESSION)
+# WHY: Without active curation, agent memory files grow unbounded and fill with
+# stale entries, duplicated lessons, and CLAUDE.md copies. A 1,000-line memory
+# file gets skimmed, not read — it actively degrades agent performance.
+# You own the quality of the entire knowledge system.
+
+Every session, pick 1-2 memory files and audit:
+
+**Curation rules (enforce these):**
+1. **Size limits**: Mistakes ≤20, Learnings ≤20, Session Log ≤15. Prune oldest when over.
+2. **Remove CLAUDE.md duplicates**: If a learning is now a CLAUDE.md rule, delete it from memory.
+3. **Consolidate duplicates**: Same lesson recorded 3+ times → merge into ONE clear entry.
+4. **Remove stale entries**: Learnings about bugs/tools that were fixed months ago → delete.
+5. **Verify consistency**: Memory entries MUST NOT contradict current agent instructions. When instructions are rewritten, mark conflicting memory entries `[OBSOLETE]` or delete.
+6. **Total file under 80 lines** — if over, it's too long. Prune aggressively.
+
+**Report format (include in output):**
+```
+## Memory Curation
+| File | Before (lines) | After (lines) | Entries removed | Reason |
+|------|----------------|---------------|-----------------|--------|
+| social.md | 164 | 47 | 12 | CLAUDE.md dupes, stale entries |
+```
+
+### 5. Process & Workflow Improvement
 
 - Identify gaps that cause repeated failures
 - Tighten quality gates that are too loose
 - Remove overhead that doesn't catch real issues
 - Update process docs to reflect reality
 
-### 5. Infrastructure Health (quick check)
+### 6. Infrastructure Health (quick check)
 
 Quick checks — don't spend more than 2 minutes:
 - Orchestrator daemon running?
