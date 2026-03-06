@@ -1,130 +1,111 @@
 # Agent Architect Kit
 
-A starter kit for running multiple Claude Code agents as a team. Instead of one AI assistant doing everything, you define specialized roles (coder, QA, designer, ops) that work on tasks from a shared queue — each with its own instructions, tools, and persistent memory.
+A free starter kit for running multiple Claude Code agents on a single codebase. Agent definitions, memory systems, process docs, and orchestration scripts — extracted from a production system running 10 agents across 2,500+ autonomous tasks.
 
-Extracted from a production system that has run 10 agent roles across 2,500+ autonomous tasks since January 2026. Every rule exists because something broke without it.
+## The Problem
 
-## Why
+Running AI agents without structure breaks in predictable ways:
 
-Claude Code is powerful with one agent. But as your project grows, a single agent can't hold all the context — deploy safety, design standards, test requirements, security rules — without its instructions becoming a 10,000-line mess that bleeds into every task.
+- **Agents forget everything between sessions** — the same mistakes repeat endlessly
+- **Agents fabricate results** — "tests passed" when they didn't run, quality gates skipped silently
+- **No coordination** — two agents edit the same file, or one deploys while another is mid-test
+- **Rules don't stick** — you re-explain deploy safety, testing requirements, and style guides every session
+- **Bad work ships unchecked** — no independent verification, no audit trail
 
-**The Agent Architect Kit splits that into roles:**
+## What You Get
 
-- A **coder** agent that implements features, runs tests, and deploys — it knows your stack, your testing rules, and your deploy pipeline
-- A **QA** agent that independently verifies what the coder shipped — catches bugs the coder can't see in its own work
-- An **operations** agent that monitors all the other agents and edits their instructions when patterns break — the self-improving feedback loop
-- Plus **designer**, **product**, and **marketing** agents for creative and go-to-market workflows
-
-Each agent reads its own memory file at session start (past mistakes, learnings, stakeholder feedback) so it doesn't repeat failures across sessions.
-
-## What's Included
+- **Agent definitions** for 6 roles (coder, QA, designer, product, marketing, operations) — each with scoped instructions, tool access, and model selection. Ready to customize.
+- **Memory system** — agents read past mistakes and learnings before starting work, and record new ones when they finish. Failures stop repeating.
+- **Process docs** for common workflows — task queues, deploys, security audits, design approval, product launches, incident response. Reference material, not rigid frameworks.
+- **Orchestration scripts** — a daemon that spawns agents from a task queue, monitors health, detects stuck work, and chains follow-up tasks automatically.
+- **A real CLAUDE.md template** (~350 lines) with `[YOUR_VALUE]` placeholders for your stack. Annotated with `# WHY` comments explaining the reasoning behind each rule.
 
 ```
 agent-architect-kit/
-├── core/                        # Agent definitions + project config
-│   ├── CLAUDE.md                # Project instructions template (~350 lines)
-│   │                            # Annotated with WHY comments explaining each rule
-│   ├── agents/                  # 6 role definitions (coder, qa, designer, product,
-│   │   └── *.md                 #   marketing, operations) — frontmatter + instructions
-│   └── memory/
-│       └── memory-directive.md  # Cross-session memory protocol (@ import in every agent)
-│
-├── pro/                         # Process documentation
-│   └── processes/               # 11 process docs: work queue, orchestration,
-│       └── *.md                 #   design approval, security audit, QA checklist,
-│                                #   engineering, feature dev, product launch, incidents
-│
-└── full/                        # Orchestration automation
-    ├── scripts/                 # agent-task, agent-worker, agent-orchestrator,
-    │   └── *                    #   queue-monitor (Ruby CLIs)
-    └── automation/
-        └── launchd/             # macOS daemon plists for continuous orchestration
+├── core/                  # Agent definitions + project config
+│   ├── CLAUDE.md          # Project instructions template
+│   ├── agents/*.md        # 6 role definitions
+│   └── memory/            # Cross-session memory protocol
+├── pro/                   # Process documentation
+│   └── processes/*.md     # 11 workflow guides
+└── full/                  # Orchestration automation
+    ├── scripts/           # CLI tools (task queue, worker, monitor)
+    └── automation/        # macOS daemon plists
 ```
-
-**27 files total.** Templates, not finished configs — you customize them for your stack.
 
 ## Quick Start
 
-### 1. Copy files into your project
+**1. Copy the core files into your project:**
 
 ```bash
-# Project instructions
 cp core/CLAUDE.md your-project/CLAUDE.md
-
-# Agent definitions
 mkdir -p your-project/.claude/agents
 cp core/agents/*.md your-project/.claude/agents/
 cp core/memory/memory-directive.md your-project/.claude/agents/
-
-# (Optional) Process docs — reference material for scaling
-cp -r pro/processes your-project/agents/docs/processes
-
-# (Optional) Orchestration scripts — for autonomous task queues
-cp full/scripts/* your-project/bin/
 ```
 
-### 2. Replace placeholders
-
-Every file uses `[YOUR_VALUE]` placeholders. Open `CLAUDE.md` and replace them:
+**2. Replace placeholders** in `CLAUDE.md` and each agent file — search for `[YOUR_VALUE]`:
 
 | Placeholder | Example |
 |---|---|
 | `[YOUR_COMPANY]` | Acme Corp |
 | `[YOUR_FRAMEWORK]` | Rails 8, Next.js, Django |
-| `[YOUR_DEPLOY_TOOL]` | kamal, capistrano, vercel |
-| `[YOUR_SERVER_IP]` | 10.0.0.1 |
+| `[YOUR_DEPLOY_TOOL]` | Kamal, Capistrano, Vercel |
 | `[YOUR_DB]` | PostgreSQL, SQLite |
-| `[YOUR_TOOL]` | mise, rbenv, nvm |
-| `[YOUR_VERSION]` | 3.3.4, 20.x |
 
-Do the same for each agent definition in `.claude/agents/`. Delete sections that don't apply to your stack.
+Delete sections that don't apply to your stack.
 
-### 3. Create memory files
+**3. Create memory files** — one per agent role, in `agents/state/memory/`:
 
 ```bash
 mkdir -p your-project/agents/state/memory
-for role in coder qa designer product marketing operations; do
-  echo "# ${role} Agent Memory
-
-## Mistakes
-
-## Learnings
-
-## Stakeholder Feedback
-
-## Session Log" > your-project/agents/state/memory/${role}.md
-done
 ```
 
-### 4. Run your first agent
+Create a file for each role (`coder.md`, `qa.md`, etc.) with sections for Mistakes, Learnings, and Session Log. Agents will read and update these automatically.
+
+**4. Run your first agent:**
 
 ```bash
 cd your-project
 claude --agent coder --print "List the files in this project and describe the architecture"
 ```
 
-## Key Ideas
+## Three Levels of Complexity
 
-**CLAUDE.md is the control plane.** Claude Code reads it at session start. Every rule there governs agent behavior — deploy safety, testing requirements, quality gates. A well-maintained CLAUDE.md is the difference between agents that repeat mistakes and agents that learn. The template includes annotated `# WHY` comments so you understand the reasoning behind each rule and can decide what applies to your project.
+Pick what fits your needs. You don't have to use everything.
 
-**Memory prevents repeated failures.** Without persistent memory, agents start from zero every session. The memory directive ensures agents read past mistakes and learnings before starting work, and record new ones when they finish. In our production system, agents repeated identical failures (wrong file formats, skipped tests, incorrect API calls) until memory was added.
+### `core/` — Start here
+Agent definitions + memory. Enough to run specialized agents that learn across sessions. This alone is a major upgrade over a single unstructured agent.
 
-**Operations is the meta-agent.** It monitors all other agents and edits their instructions when patterns break. Agent keeps making the same mistake? Operations rewrites the rule to make it clearer. Quality drifting? Operations tightens the checklist. It's the feedback loop that makes the whole system self-improving.
+### `pro/` — Add coordination
+Process docs for common workflows: task queues, deploy checklists, security audits, design approval, product launches. Copy the ones relevant to your team. Skip the rest.
 
-**Quality gates must be externally verified.** Self-reported "tests passed" is unreliable — our production system had an agent fabricate test results. The kit's quality gate patterns (exact test counts, post-commit verification, separate QA agent review) exist to make shortcuts detectable.
+### `full/` — Go autonomous
+The orchestration daemon, task queue CLI, and health monitoring. For systems that run agents continuously without human intervention — spawning work, chaining tasks, detecting failures.
 
 ## Adapting to Your Stack
 
-This kit was built for a Rails project, but the patterns are stack-agnostic:
+This kit was extracted from a Rails project, but the patterns are stack-agnostic:
 
-- **Any language**: Adapt the coder agent's test/deploy commands to your toolchain (pytest, jest, cargo test, go test)
-- **Any project type**: The designer/product agents work for any creative pipeline. The engineering processes apply to any deployed software.
-- **Solo projects**: Start with just coder + qa + operations. Three agents cover the core loop (build → verify → improve). Add roles as complexity grows.
+- **Any language** — swap test/deploy commands in the coder agent (`pytest`, `jest`, `cargo test`, `go test`)
+- **Any project type** — designer/product agents work for any creative pipeline; engineering processes apply to any deployed software
+- **Solo projects** — start with just coder + QA + operations. Three agents cover the core loop: build, verify, improve. Add roles as complexity grows.
+
+## Key Ideas
+
+**CLAUDE.md is the control plane.** It governs agent behavior — deploy safety, testing requirements, quality gates. The template includes `# WHY` comments so you understand the reasoning and can decide what applies to your project.
+
+**Memory prevents repeated failures.** Without it, agents start from zero every session. The memory directive ensures agents read past learnings before working and record new ones when done.
+
+**Operations is the meta-agent.** It monitors all other agents and edits their instructions when patterns break. Agent keeps making the same mistake? Operations rewrites the rule. It's the feedback loop that makes the system self-improving.
+
+**Quality gates must be externally verified.** Self-reported results are unreliable. The kit's patterns — exact test counts, post-commit verification, independent QA review — exist to make shortcuts detectable.
 
 ## Links
 
-- [ultrathink.art/tools](https://ultrathink.art/tools) — where this kit lives
-- [Agent Orchestra CLI](https://github.com/ultrathink-art/agent-orchestra) — companion tool for task queue orchestration
+- [ultrathink.art](https://ultrathink.art) — the store this system runs
+- [ultrathink.art/blog](https://ultrathink.art/blog) — technical posts about how this was built
+- [GitHub Issues](https://github.com/ultrathink-art/agent-architect-kit/issues) — questions and feedback
 
 ## License
 
