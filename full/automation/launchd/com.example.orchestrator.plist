@@ -1,0 +1,55 @@
+<!-- Agent Orchestrator Daemon — launchd plist
+     WHY: launchd keeps the orchestrator running continuously on macOS.
+     The orchestrator polls the work queue and spawns agents automatically.
+     Without this, you'd need to run bin/agent-orchestrator manually.
+
+     SETUP:
+     1. Replace all [YOUR_VALUE] placeholders
+     2. Copy to ~/Library/LaunchAgents/
+     3. launchctl load ~/Library/LaunchAgents/com.[YOUR_COMPANY].orchestrator.plist
+
+     CRITICAL: PATH must include your Ruby install BEFORE /usr/bin.
+     WHY (Feb 2026): Wrong PATH order → system Ruby (2.6) used instead of
+     project Ruby (3.3.4) → LoadError crash → 12h outage.
+-->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.[YOUR_COMPANY].orchestrator</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>[YOUR_PROJECT_PATH]/bin/agent-orchestrator</string>
+    <string>--daemon</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>[YOUR_PROJECT_PATH]</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- WHY: PATH order is critical. Your Ruby MUST come before /usr/bin -->
+    <key>PATH</key>
+    <string>[YOUR_RUBY_PATH]/bin:/usr/local/bin:/usr/bin:/bin</string>
+
+    <!-- WHY: UTF-8 required for agent output with special characters -->
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+
+    <key>ORCHESTRATOR_API_URL</key>
+    <string>https://[YOUR_DOMAIN]</string>
+  </dict>
+
+  <!-- Keep alive: restart on crash -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Log output -->
+  <key>StandardOutPath</key>
+  <string>[YOUR_PROJECT_PATH]/log/orchestrator.log</string>
+  <key>StandardErrorPath</key>
+  <string>[YOUR_PROJECT_PATH]/log/orchestrator-error.log</string>
+</dict>
+</plist>

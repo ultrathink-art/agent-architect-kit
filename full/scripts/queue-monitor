@@ -1,0 +1,204 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Queue Health Monitor
+#
+# WHY THIS EXISTS: Without monitoring, tasks get stuck, agents hang, and the
+# queue silently stops working. This script detects and auto-recovers from
+# common failure modes: stale claims, orphaned tasks, and stuck queues.
+#
+# Usage: bin/queue-monitor           # Health check + stale task reset
+#        bin/queue-monitor --status  # Show current queue status
+#        bin/queue-monitor --stale   # Reset stale claimed tasks only
+#        bin/queue-monitor --health  # Full health check with alerts
+
+require "net/http"
+require "json"
+require "yaml"
+require "time"
+
+PROJECT_DIR = File.expand_path("..", __dir__)
+API_URL = ENV["ORCHESTRATOR_API_URL"] || "https://[YOUR_DOMAIN]"
+HEALTH_LOG_DIR = File.join(PROJECT_DIR, "agents/state/health_logs")
+HEALTH_LOG_FILE = File.join(HEALTH_LOG_DIR, "queue_health.log")
+
+STUCK_TASK_THRESHOLD = 10
+# WHY: Tasks claimed >60min without heartbeat are likely from dead agents.
+# Tasks claimed >5min with NO running file were never spawned.
+STALE_TASK_MINUTES = 60
+ORPHAN_TASK_MINUTES = 5
+AGENT_STATE_DIR = File.join(PROJECT_DIR, "agents/state/agent_runs")
+
+def load_token
+  if File.exist?(File.expand_path("~/.orchestrator-token"))
+    token = File.read(File.expand_path("~/.orchestrator-token")).strip
+    return token unless token.empty?
+  end
+  ENV["ORCHESTRATOR_API_TOKEN"]
+end
+
+def api_request(method, path, body = nil)
+  token = load_token
+  unless token
+    puts "Error: No API token found"
+    exit 1
+  end
+
+  uri = URI.parse("#{API_URL}#{path}")
+  http = Net::HTTP.new(uri.host, uri.port)
+  http.use_ssl = uri.scheme == "https"
+  http.open_timeout = 10
+  http.read_timeout = 30
+
+  case method
+  when :get
+    request = Net::HTTP::Get.new(uri.request_uri)
+  when :post
+    request = Net::HTTP::Post.new(uri.request_uri)
+    request["Content-Type"] = "application/json"
+    request.body = body.to_json if body
+  end
+
+  request["X-Orchestrator-Token"] = token
+  response = http.request(request)
+  JSON.parse(response.body)
+rescue StandardError => e
+  { "error" => e.message }
+end
+
+def get_queue_status
+  data = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  return nil if data["error"]
+
+  tasks = data["queue"] || []
+  {
+    ready: tasks.count { |t| t["status"] == "ready" },
+    claimed: tasks.count { |t| t["status"] == "claimed" },
+    in_progress: tasks.count { |t| t["status"] == "in_progress" },
+    needs_review: tasks.count { |t| t["status"] == "needs_review" },
+    total: tasks.size,
+    tasks: tasks
+  }
+end
+
+def check_stale_tasks
+  # WHY: Stale tasks come from two sources:
+  # 1. Agent crashed after claiming (heartbeat stopped)
+  # 2. Agent was never spawned (orchestrator crashed between claim and spawn)
+  # Both need different detection thresholds.
+
+  status = get_queue_status
+  return unless status
+
+  stale_count = 0
+  claimed_tasks = status[:tasks].select { |t| t["status"] == "claimed" }
+
+  claimed_tasks.each do |task|
+    claimed_at = Time.parse(task["claimed_at"]) rescue nil
+    next unless claimed_at
+
+    age_minutes = (Time.now - claimed_at) / 60.0
+    running_file = File.join(AGENT_STATE_DIR, "#{task["task_id"]}.running")
+    has_running_file = File.exist?(running_file)
+
+    if !has_running_file && age_minutes > ORPHAN_TASK_MINUTES
+      # Never spawned — reset immediately
+      puts "ORPHAN: #{task["task_id"]} (#{task["role"]}) — claimed #{age_minutes.round}min ago, no .running file"
+      reset_task(task["task_id"])
+      stale_count += 1
+    elsif has_running_file && age_minutes > STALE_TASK_MINUTES
+      # Check heartbeat staleness
+      begin
+        state = YAML.load_file(running_file)
+        heartbeat = Time.parse(state["last_heartbeat"]) rescue nil
+        if heartbeat && (Time.now - heartbeat) > 90
+          puts "STALE: #{task["task_id"]} (#{task["role"]}) — heartbeat #{((Time.now - heartbeat) / 60).round}min old"
+          reset_task(task["task_id"])
+          stale_count += 1
+        end
+      rescue StandardError => e
+        puts "Error reading state for #{task["task_id"]}: #{e.message}"
+      end
+    end
+  end
+
+  puts "Reset #{stale_count} stale tasks" if stale_count > 0
+  puts "No stale tasks found" if stale_count == 0
+  stale_count
+end
+
+def reset_task(task_id)
+  # WHY: Reset to "ready" so the orchestrator can re-spawn.
+  # Don't delete — the task content is still valid, just the agent died.
+  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/ready")
+  puts "  → Reset #{task_id} to ready" unless result["error"]
+end
+
+def health_check
+  status = get_queue_status
+  unless status
+    log_health("UNHEALTHY: Cannot reach API")
+    exit 1
+  end
+
+  issues = []
+
+  # Check for stuck tasks
+  if status[:claimed] > STUCK_TASK_THRESHOLD
+    issues << "#{status[:claimed]} claimed tasks (threshold: #{STUCK_TASK_THRESHOLD})"
+  end
+
+  # Reset stale tasks
+  stale = check_stale_tasks
+
+  # Check orchestrator daemon
+  # (Add your daemon health check here)
+
+  if issues.empty?
+    log_health("HEALTHY: #{status[:ready]} ready, #{status[:in_progress]} in progress, #{stale} stale reset")
+  else
+    log_health("UNHEALTHY: #{issues.join("; ")}")
+    exit 1
+  end
+end
+
+def log_health(message)
+  Dir.mkdir(HEALTH_LOG_DIR) unless Dir.exist?(HEALTH_LOG_DIR)
+  timestamp = Time.now.strftime("%Y-%m-%d %H:%M:%S")
+  line = "[#{timestamp}] #{message}"
+  puts line
+  File.open(HEALTH_LOG_FILE, "a") { |f| f.puts line }
+end
+
+def show_status
+  status = get_queue_status
+  unless status
+    puts "Cannot reach API"
+    exit 1
+  end
+
+  puts "Queue Status:"
+  puts "  Ready:       #{status[:ready]}"
+  puts "  Claimed:     #{status[:claimed]}"
+  puts "  In Progress: #{status[:in_progress]}"
+  puts "  Review:      #{status[:needs_review]}"
+  puts "  Total:       #{status[:total]}"
+end
+
+# Main dispatch
+case ARGV[0]
+when "--status"
+  show_status
+when "--stale"
+  check_stale_tasks
+when "--health"
+  health_check
+when "--health-quiet"
+  # Exit 1 if unhealthy (for scripts/CI)
+  health_check
+else
+  # Default: health check + stale reset
+  show_status
+  puts ""
+  check_stale_tasks
+end

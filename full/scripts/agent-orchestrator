@@ -1,0 +1,260 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Agent Orchestrator — Spawns Claude Code agents for queued tasks
+#
+# WHY THIS EXISTS: Manual agent management doesn't scale beyond 2-3 tasks/day.
+# The orchestrator polls the work queue and automatically spawns the right agent
+# for each ready task, handling concurrency limits, heartbeat monitoring, and
+# failure recovery.
+#
+# Usage: bin/agent-orchestrator              # Run once (for cron/launchd)
+#        bin/agent-orchestrator --daemon     # Run continuously
+#        bin/agent-orchestrator --status     # Show running agents
+#        bin/agent-orchestrator --dry-run    # Show what would spawn
+
+require "yaml"
+require "json"
+require "time"
+require "net/http"
+require "fileutils"
+
+PROJECT_DIR = File.expand_path("..", __dir__)
+AGENT_STATE_DIR = File.join(PROJECT_DIR, "agents/state/agent_runs")
+AGENT_LOGS_DIR = File.join(PROJECT_DIR, "agents/state/agent_logs")
+API_URL = ENV["ORCHESTRATOR_API_URL"] || "https://[YOUR_DOMAIN]"
+
+# WHY these limits exist:
+# - MAX_CONCURRENT prevents resource exhaustion (each agent = full Claude session)
+# - SERIALIZE_ROLES prevents overlapping git pushes and deploys
+# - POLL_INTERVAL balances responsiveness vs API rate limits
+MAX_CONCURRENT_AGENTS = 3
+POLL_INTERVAL_SECONDS = 60
+SERIALIZE_ROLES = %w[coder marketing].freeze  # Max 1 per role
+
+def load_token
+  if File.exist?(File.expand_path("~/.orchestrator-token"))
+    File.read(File.expand_path("~/.orchestrator-token")).strip
+  else
+    ENV["ORCHESTRATOR_API_TOKEN"]
+  end
+end
+
+def api_request(method, path, body = nil)
+  token = load_token
+  uri = URI.parse("#{API_URL}#{path}")
+  http = Net::HTTP.new(uri.host, uri.port)
+  http.use_ssl = uri.scheme == "https"
+  http.open_timeout = 10
+  http.read_timeout = 30
+
+  case method
+  when :get
+    request = Net::HTTP::Get.new(uri.request_uri)
+  when :post
+    request = Net::HTTP::Post.new(uri.request_uri)
+    request["Content-Type"] = "application/json"
+    request.body = body.to_json if body
+  end
+
+  request["X-Orchestrator-Token"] = token
+  response = http.request(request)
+  JSON.parse(response.body)
+rescue StandardError => e
+  { "error" => e.message }
+end
+
+def get_ready_tasks
+  data = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  return [] if data["error"]
+  (data["queue"] || []).select { |t| t["status"] == "ready" }
+end
+
+def get_running_agents
+  # WHY: Check both API state AND local .running files.
+  # API may show "claimed" but local agent crashed before updating.
+  running = []
+  Dir.glob(File.join(AGENT_STATE_DIR, "*.running")).each do |f|
+    state = YAML.load_file(f) rescue next
+    next unless state["pid"]
+    # Check if process is actually alive
+    begin
+      Process.kill(0, state["pid"])
+      running << state
+    rescue Errno::ESRCH
+      # Process dead — stale file, will be cleaned up by monitor
+    end
+  end
+  running
+end
+
+def can_spawn?(role, running)
+  # Check total concurrency
+  return false if running.size >= MAX_CONCURRENT_AGENTS
+
+  # Check serialized roles
+  if SERIALIZE_ROLES.include?(role)
+    return false if running.any? { |r| r["role"] == role }
+  end
+
+  true
+end
+
+def spawn_agent(task)
+  task_id = task["task_id"]
+  role = task["role"]
+  timestamp = Time.now.strftime("%Y%m%d-%H%M%S")
+
+  log_file = File.join(AGENT_LOGS_DIR, "#{task_id}-#{timestamp}.log")
+  state_file = File.join(AGENT_STATE_DIR, "#{task_id}.running")
+  completion_file = File.join(AGENT_STATE_DIR, "#{task_id}.complete")
+
+  # Claim the task first
+  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/claim")
+  unless result["status"] == "claimed"
+    puts "Failed to claim #{task_id}: #{result["error"]}"
+    return
+  end
+
+  env = {
+    # WHY: CLAUDECODE must be nil to prevent "nested session" crash.
+    # The orchestrator runs inside Claude Code, and child agents inherit
+    # the env var unless explicitly unset.
+    "CLAUDECODE" => nil,
+    "AGENT_TASK_ID" => task_id,
+    "AGENT_ROLE" => role,
+    "AGENT_LOG_FILE" => log_file,
+    "AGENT_STATE_FILE" => state_file,
+    "AGENT_COMPLETION_FILE" => completion_file,
+    "AGENT_BRIEF" => task["brief"],
+    "ORCHESTRATOR_API_URL" => API_URL,
+    "ORCHESTRATOR_API_TOKEN" => load_token
+  }
+
+  # Spawn the worker
+  pid = Process.spawn(
+    env,
+    File.join(PROJECT_DIR, "bin/agent-worker"),
+    chdir: PROJECT_DIR,
+    out: log_file,
+    err: log_file
+  )
+  Process.detach(pid)
+
+  # Write initial state file
+  File.write(state_file, {
+    "task_id" => task_id,
+    "role" => role,
+    "pid" => pid,
+    "started_at" => Time.now.iso8601,
+    "last_heartbeat" => Time.now.iso8601,
+    "log_file" => log_file
+  }.to_yaml)
+
+  puts "Spawned #{role} agent for #{task_id} (pid: #{pid})"
+end
+
+def process_completions
+  # WHY: Check for .complete files from finished agents and update task status.
+  # Also triggers task chains (next_tasks) on the server side.
+  Dir.glob(File.join(AGENT_STATE_DIR, "*.complete")).each do |f|
+    state = YAML.load_file(f) rescue next
+    task_id = state["task_id"]
+
+    case state["result"]
+    when "completed"
+      # WHY: Must call the API complete endpoint (not just update status)
+      # because server-side spawn_next_tasks only fires on the complete action.
+      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/complete",
+                  { notes: state["notes"] })
+      puts "Completed: #{task_id}"
+    when "needs_review"
+      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/review")
+      puts "Review: #{task_id}"
+    when "failed"
+      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/fail",
+                  { last_failure: state["notes"] })
+      puts "Failed: #{task_id}"
+    end
+
+    # Clean up state files
+    FileUtils.rm_f(f)
+    FileUtils.rm_f(f.sub(".complete", ".running"))
+  end
+end
+
+def run_once
+  # Process any completed agents first
+  process_completions
+
+  # Get ready tasks and running agents
+  ready = get_ready_tasks
+  running = get_running_agents
+
+  puts "Queue: #{ready.size} ready, #{running.size} running"
+
+  # Sort by priority (P0 first)
+  ready.sort_by! { |t| t["priority"] || "P2" }
+
+  # Spawn agents for ready tasks
+  ready.each do |task|
+    break unless can_spawn?(task["role"], running)
+
+    spawn_agent(task)
+    running << { "role" => task["role"] }  # Track locally for concurrency check
+  end
+end
+
+def run_daemon
+  puts "Orchestrator daemon starting (poll every #{POLL_INTERVAL_SECONDS}s)"
+  loop do
+    begin
+      run_once
+    rescue StandardError => e
+      puts "Error: #{e.message}"
+    end
+    sleep POLL_INTERVAL_SECONDS
+  end
+end
+
+def show_status
+  running = get_running_agents
+  ready = get_ready_tasks
+
+  puts "Running Agents (#{running.size}/#{MAX_CONCURRENT_AGENTS}):"
+  running.each do |r|
+    age = ((Time.now - Time.parse(r["started_at"])) / 60).round rescue "?"
+    puts "  #{r["task_id"]} [#{r["role"]}] — #{age}min, pid #{r["pid"]}"
+  end
+
+  puts "\nReady Tasks (#{ready.size}):"
+  ready.each do |t|
+    puts "  #{t["task_id"]} [#{t["role"]}] #{t["priority"]} — #{t["subject"]}"
+  end
+end
+
+# Ensure directories exist
+FileUtils.mkdir_p(AGENT_STATE_DIR)
+FileUtils.mkdir_p(AGENT_LOGS_DIR)
+
+# Main dispatch
+case ARGV[0]
+when "--daemon"
+  run_daemon
+when "--status"
+  show_status
+when "--dry-run"
+  ready = get_ready_tasks
+  running = get_running_agents
+  puts "Would spawn:"
+  ready.each do |task|
+    if can_spawn?(task["role"], running)
+      puts "  ✓ #{task["task_id"]} [#{task["role"]}] #{task["subject"]}"
+      running << { "role" => task["role"] }
+    else
+      puts "  ✗ #{task["task_id"]} [#{task["role"]}] — blocked (concurrency)"
+    end
+  end
+else
+  run_once
+end

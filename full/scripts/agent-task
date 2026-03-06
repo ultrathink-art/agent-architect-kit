@@ -1,0 +1,201 @@
+#!/usr/bin/env ruby
+# Agent Task Management CLI
+#
+# WHY THIS EXISTS: Tasks are the atomic unit of work in the agent system.
+# This script provides a CLI for creating, managing, and querying tasks
+# through the work queue API. Without it, agents have no way to coordinate.
+#
+# Usage: bin/agent-task add <role> <subject>    # Create new task
+#        bin/agent-task ready <task_id>         # Mark task ready
+#        bin/agent-task claim <role>            # Claim next ready task
+#        bin/agent-task complete <task_id>      # Mark task complete
+#        bin/agent-task list [--all] [--status] [--role] [--search]
+#        bin/agent-task show <task_id>          # Show task details
+#        bin/agent-task status                  # Status summary counts
+#        bin/agent-task cancel <task_id>        # Cancel a task
+
+require "net/http"
+require "json"
+require "uri"
+require "yaml"
+require "time"
+
+PROJECT_DIR = File.expand_path("..", __dir__)
+TOKEN_FILE = File.expand_path("~/.orchestrator-token")
+API_URL = ENV["ORCHESTRATOR_API_URL"] || "https://[YOUR_DOMAIN]"
+
+# WHY: Token loading tries multiple sources for flexibility.
+# Rails credentials for production, file for local dev, env for CI.
+def load_token
+  # 1. Try Rails credentials first
+  begin
+    require_relative "../lib/credentials_loader"
+    token = CredentialsLoader.dig(:orchestrator, :api_token)
+    return token if token && !token.empty?
+  rescue LoadError, StandardError
+  end
+
+  # 2. Try ~/.orchestrator-token file
+  if File.exist?(TOKEN_FILE)
+    token = File.read(TOKEN_FILE).strip
+    return token unless token.empty?
+  end
+
+  # 3. Fall back to env var
+  ENV["ORCHESTRATOR_API_TOKEN"]
+end
+
+def api_request(method, path, body = nil)
+  token = load_token
+  unless token
+    puts "Error: No API token found"
+    puts "Checked: Rails credentials, ~/.orchestrator-token, ORCHESTRATOR_API_TOKEN env"
+    exit 1
+  end
+
+  uri = URI.parse("#{API_URL}#{path}")
+  http = Net::HTTP.new(uri.host, uri.port)
+  http.use_ssl = uri.scheme == "https"
+  http.open_timeout = 10
+  http.read_timeout = 30
+
+  case method
+  when :get
+    request = Net::HTTP::Get.new(uri.request_uri)
+  when :post
+    request = Net::HTTP::Post.new(uri.request_uri)
+    request["Content-Type"] = "application/json"
+    request.body = body.to_json if body
+  end
+
+  request["X-Orchestrator-Token"] = token
+  response = http.request(request)
+  JSON.parse(response.body)
+rescue JSON::ParserError
+  { "error" => "Invalid response from server", "body" => response&.body }
+rescue StandardError => e
+  { "error" => e.message }
+end
+
+# WHY: Auto-chain injection ensures every coder task gets QA,
+# every designer task gets product upload, etc. Without this,
+# agents complete work but the next step never happens.
+VALID_ROLES = %w[coder product marketing designer security qa operations growth].freeze
+
+AUTO_CHAINS = {
+  "coder" => [ { "role" => "qa", "subject_template" => "QA Review: {subject} (from {task_id})" } ],
+  "designer" => [ { "role" => "product", "subject_template" => "Upload design from {task_id}: {subject}" } ],
+  "product" => [ { "role" => "qa", "subject_template" => "QA Review: {subject} (from {task_id})" } ]
+}.freeze
+
+def add_task(role, subject, type = "feature", priority = "P1")
+  unless VALID_ROLES.include?(role)
+    puts "Error: Invalid role '#{role}'. Valid: #{VALID_ROLES.join(", ")}"
+    exit 1
+  end
+
+  # Build next_tasks from auto-chains (unless --no-chain flag)
+  next_tasks = nil
+  unless ARGV.include?("--no-chain")
+    chain = AUTO_CHAINS[role]
+    if chain
+      next_tasks = chain.map do |c|
+        { "role" => c["role"], "subject" => c["subject_template"] }
+      end
+    end
+  end
+
+  body = {
+    role: role,
+    subject: subject,
+    task_type: type,
+    priority: priority,
+    next_tasks: next_tasks
+  }
+
+  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks", body)
+  if result["task_id"]
+    puts "Created task: #{result["task_id"]} (#{role}, #{priority})"
+    puts "  Subject: #{subject}"
+    puts "  Chain: #{next_tasks ? next_tasks.map { |t| t["role"] }.join(" → ") : "none"}"
+  else
+    puts "Error: #{result["error"] || "Unknown error"}"
+  end
+end
+
+def ready_task(task_id)
+  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/ready")
+  if result["status"] == "ready"
+    puts "✓ #{task_id} marked ready for orchestrator"
+  else
+    puts "Error: #{result["error"] || "Unknown error"}"
+  end
+end
+
+def list_tasks
+  result = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  if result["error"]
+    puts "Error: #{result["error"]}"
+    return
+  end
+
+  tasks = result["queue"] || []
+  if tasks.empty?
+    puts "No tasks in queue"
+    return
+  end
+
+  # Group by status
+  grouped = tasks.group_by { |t| t["status"] }
+  %w[in_progress claimed ready pending needs_review].each do |status|
+    next unless grouped[status]
+    puts "\n## #{status.upcase} (#{grouped[status].size})"
+    grouped[status].each do |t|
+      puts "  #{t["task_id"]} [#{t["role"]}] #{t["subject"]}"
+    end
+  end
+end
+
+def show_task(task_id)
+  result = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}")
+  if result["error"]
+    puts "Error: #{result["error"]}"
+    return
+  end
+
+  task = result["task"] || result
+  puts "Task: #{task["task_id"]}"
+  puts "Role: #{task["role"]}"
+  puts "Status: #{task["status"]}"
+  puts "Priority: #{task["priority"]}"
+  puts "Subject: #{task["subject"]}"
+  puts "Created: #{task["created_at"]}"
+  puts "Notes: #{task["notes"]}" if task["notes"]
+  puts "Next tasks: #{task["next_tasks"]}" if task["next_tasks"]
+end
+
+# Main CLI dispatch
+case ARGV[0]
+when "add"
+  add_task(ARGV[1], ARGV[2], ARGV[3] || "feature", ARGV[4] || "P1")
+when "ready"
+  ready_task(ARGV[1])
+when "complete"
+  api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{ARGV[1]}/complete")
+  puts "✓ #{ARGV[1]} marked complete"
+when "list"
+  list_tasks
+when "show"
+  show_task(ARGV[1])
+when "status"
+  result = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  tasks = result["queue"] || []
+  counts = tasks.group_by { |t| t["status"] }.transform_values(&:size)
+  puts "Queue status: #{counts.map { |k, v| "#{k}: #{v}" }.join(", ")}"
+when "cancel"
+  api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{ARGV[1]}/cancel")
+  puts "✓ #{ARGV[1]} cancelled"
+else
+  puts "Usage: bin/agent-task <command> [args]"
+  puts "Commands: add, ready, complete, list, show, status, cancel"
+end
