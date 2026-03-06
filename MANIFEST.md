@@ -1,34 +1,39 @@
 # Agent Architect Kit — File Manifest
 
-## Core Tier ($49)
+27 files organized into three tiers. Use what you need.
+
+## Core — `core/`
+
+The foundation: project instructions template + 6 agent role definitions + memory protocol.
 
 ```
-kit/core/
-├── CLAUDE.md                    # Battle-tested project instructions template
-│                                  ~350 lines, annotated with WHY comments
+core/
+├── CLAUDE.md                    # Project instructions template (~350 lines)
+│                                  Annotated with WHY comments for every rule.
 │                                  Covers: deploy safety, quality gates, agent
-│                                  orchestration, caching gotchas, mobile CSS,
-│                                  ERB templates, Hotwire/Turbo, testing
+│                                  orchestration, caching, mobile CSS, testing
 │
 ├── agents/                      # 6 agent role definitions
 │   ├── coder.md                 # Senior engineer: implement → test → deploy
-│   ├── qa.md                    # QA engineer: verify deploys, inspect designs
+│   ├── qa.md                    # QA engineer: verify deploys, inspect output
 │   ├── designer.md              # Creative director: research → generate → QA
-│   ├── product.md               # Product manager: catalog, quality, launch
+│   ├── product.md               # Product manager: catalog, quality gate, launch
 │   ├── marketing.md             # Marketing lead: content, blog, social coord
-│   └── operations.md            # Operations: monitor agents, fix the system
+│   └── operations.md            # Meta-agent: monitors others, fixes the system
 │
 └── memory/
     └── memory-directive.md      # Cross-session memory protocol
-                                   Include in every agent via @import
+                                   Include in every agent via @ import
 ```
 
-**Total: 8 files.** Everything you need to set up a multi-agent Claude Code project.
+**8 files.** Everything you need to set up a multi-agent Claude Code project.
 
-## Pro Tier ($99) — includes Core
+## Pro — `pro/`
+
+Process documentation for scaling beyond ad-hoc tasks.
 
 ```
-kit/pro/
+pro/
 └── processes/                   # 11 process documents
     ├── work_queue.md            # Task queue: states, priorities, workflows
     ├── orchestrator.md          # Autonomous agent spawning system
@@ -40,15 +45,17 @@ kit/pro/
     ├── engineering.md           # Engineering: review, test, deploy, incidents
     ├── new_product.md           # Product pipeline: discovery → launch
     ├── build_feature.md         # Feature dev workflow: brief → deploy
-    └── incident_learnings.md    # Real incident database with fixes/rules
+    └── incident_learnings.md    # Real incident database with fixes and rules
 ```
 
-**Total: 19 files (8 Core + 11 Pro).** Processes that prevent the mistakes we made so you don't have to.
+**19 files (8 core + 11 pro).** Processes that prevent the mistakes we made so you don't have to.
 
-## Full Tier ($149) — includes Core + Pro
+## Full — `full/`
+
+Orchestration scripts that make it autonomous.
 
 ```
-kit/full/
+full/
 ├── scripts/                     # 4 orchestration scripts (Ruby)
 │   ├── agent-task               # ~200 lines: CLI for task management
 │   ├── agent-worker             # ~250 lines: Agent entry point with heartbeat
@@ -61,14 +68,14 @@ kit/full/
         └── com.example.queue-health.plist   # Hourly health checks
 ```
 
-**Total: 25 files (8 Core + 11 Pro + 6 Full).** The complete autonomous agent system.
+**27 files total.** The complete autonomous agent system.
 
 ## Placeholder Reference
 
 All files use `[YOUR_VALUE]` placeholders for project-specific values:
 
 | Placeholder | Example | Where Used |
-|-------------|---------|------------|
+|---|---|---|
 | `[YOUR_COMPANY]` | Acme Corp | Agent descriptions |
 | `[YOUR_SITE]` | acme.com | Product/marketing agents |
 | `[YOUR_DOMAIN]` | acme.com | CLAUDE.md, scripts |

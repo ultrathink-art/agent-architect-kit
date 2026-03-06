@@ -1,95 +1,90 @@
 # Agent Architect Kit
 
-**Production-tested multi-agent orchestration for Claude Code projects.**
+A starter kit for running multiple Claude Code agents as a team. Instead of one AI assistant doing everything, you define specialized roles (coder, QA, designer, ops) that work on tasks from a shared queue — each with its own instructions, tools, and persistent memory.
 
-This kit contains the battle-tested configuration, agent definitions, processes, and scripts that power a real production system with 10 AI agent roles running 100+ autonomous sessions.
+Extracted from a production system that has run 10 agent roles across 2,500+ autonomous tasks since January 2026. Every rule exists because something broke without it.
 
-Every rule, checklist, and process doc in this kit exists because something went wrong without it. The dates and commit references prove these aren't theoretical — they're battle scars from running autonomous AI agents in production since January 2026.
+## Why
 
-## What's Inside
+Claude Code is powerful with one agent. But as your project grows, a single agent can't hold all the context — deploy safety, design standards, test requirements, security rules — without its instructions becoming a 10,000-line mess that bleeds into every task.
 
-### Core ($49) — `kit/core/`
-The foundation for any Claude Code multi-agent project.
+**The Agent Architect Kit splits that into roles:**
 
-| File | Description |
-|------|-------------|
-| `CLAUDE.md` | Battle-tested project instructions with inline WHY comments |
-| `agents/coder.md` | Senior engineer agent — implements, tests, deploys |
-| `agents/qa.md` | QA engineer — verifies deploys, inspects designs, catches bugs |
-| `agents/designer.md` | Creative director — trend research, AI image gen, quality filtering |
-| `agents/product.md` | Product manager — catalog, quality gate, launch pipeline |
-| `agents/marketing.md` | Marketing lead — content strategy, blog, social coordination |
-| `agents/operations.md` | Operations manager — meta-agent that improves how agents work |
-| `memory/memory-directive.md` | Persistent memory protocol for cross-session learning |
+- A **coder** agent that implements features, runs tests, and deploys — it knows your stack, your testing rules, and your deploy pipeline
+- A **QA** agent that independently verifies what the coder shipped — catches bugs the coder can't see in its own work
+- An **operations** agent that monitors all the other agents and edits their instructions when patterns break — the self-improving feedback loop
+- Plus **designer**, **product**, and **marketing** agents for creative and go-to-market workflows
 
-### Pro ($99) — `kit/pro/` (includes Core)
-Process documentation for scaling beyond ad-hoc tasks.
+Each agent reads its own memory file at session start (past mistakes, learnings, stakeholder feedback) so it doesn't repeat failures across sessions.
 
-| File | Description |
-|------|-------------|
-| `processes/work_queue.md` | Task queue system — states, priorities, workflows |
-| `processes/orchestrator.md` | Autonomous agent spawning and monitoring |
-| `processes/design_approval.md` | Quality gate — 70-90% rejection target |
-| `processes/qa_checklist.md` | Post-deploy verification checklist |
-| `processes/security_audit.md` | Daily security audit process |
-| `processes/shareholder_feedback.md` | Feedback capture → P0 task pipeline |
-| `processes/launch.md` | Product launch coordination across agents |
-| `processes/engineering.md` | Engineering process — review, test, deploy, incident response |
-| `processes/new_product.md` | Full product pipeline — discovery to launch |
-| `processes/build_feature.md` | Feature development workflow — brief to deploy |
-| `processes/incident_learnings.md` | Real incident database with patterns and fixes |
+## What's Included
 
-### Full ($149) — `kit/full/` (includes Core + Pro)
-The orchestration scripts that make it all autonomous.
+```
+agent-architect-kit/
+├── core/                        # Agent definitions + project config
+│   ├── CLAUDE.md                # Project instructions template (~350 lines)
+│   │                            # Annotated with WHY comments explaining each rule
+│   ├── agents/                  # 6 role definitions (coder, qa, designer, product,
+│   │   └── *.md                 #   marketing, operations) — frontmatter + instructions
+│   └── memory/
+│       └── memory-directive.md  # Cross-session memory protocol (@ import in every agent)
+│
+├── pro/                         # Process documentation
+│   └── processes/               # 11 process docs: work queue, orchestration,
+│       └── *.md                 #   design approval, security audit, QA checklist,
+│                                #   engineering, feature dev, product launch, incidents
+│
+└── full/                        # Orchestration automation
+    ├── scripts/                 # agent-task, agent-worker, agent-orchestrator,
+    │   └── *                    #   queue-monitor (Ruby CLIs)
+    └── automation/
+        └── launchd/             # macOS daemon plists for continuous orchestration
+```
 
-| File | Description |
-|------|-------------|
-| `scripts/agent-task` | CLI for managing the task queue (add, ready, claim, complete) |
-| `scripts/agent-worker` | Entry point for spawned agents — context injection, heartbeat, completion |
-| `scripts/agent-orchestrator` | Daemon that polls queue and spawns agents automatically |
-| `scripts/queue-monitor` | Health monitor — detects stuck tasks, auto-recovers |
-| `automation/launchd/` | macOS launchd plists for daemon automation |
+**27 files total.** Templates, not finished configs — you customize them for your stack.
 
-## Quick Start (5 minutes)
+## Quick Start
 
-### 1. Copy Core files to your project
+### 1. Copy files into your project
 
 ```bash
-# Copy the CLAUDE.md template
-cp kit/core/CLAUDE.md your-project/CLAUDE.md
+# Project instructions
+cp core/CLAUDE.md your-project/CLAUDE.md
 
-# Copy agent definitions
+# Agent definitions
 mkdir -p your-project/.claude/agents
-cp kit/core/agents/*.md your-project/.claude/agents/
-cp kit/core/memory/memory-directive.md your-project/.claude/agents/
+cp core/agents/*.md your-project/.claude/agents/
+cp core/memory/memory-directive.md your-project/.claude/agents/
 
-# Create memory directories
-mkdir -p your-project/agents/state/memory
+# (Optional) Process docs — reference material for scaling
+cp -r pro/processes your-project/agents/docs/processes
+
+# (Optional) Orchestration scripts — for autonomous task queues
+cp full/scripts/* your-project/bin/
 ```
 
-### 2. Customize placeholders
+### 2. Replace placeholders
 
-Open `CLAUDE.md` and replace all `[YOUR_VALUE]` placeholders:
+Every file uses `[YOUR_VALUE]` placeholders. Open `CLAUDE.md` and replace them:
 
-```
-[YOUR_TOOL]         → your Ruby version manager (mise, rbenv, asdf)
-[YOUR_VERSION]      → your Ruby version (3.3.4)
-[YOUR_DEPLOY_TOOL]  → your deploy tool (kamal, capistrano)
-[YOUR_SERVER_IP]    → your production server IP
-[YOUR_DB]           → your database (SQLite, PostgreSQL)
-[YOUR_DOMAIN]       → your domain (example.com)
-[YOUR_ADMIN]        → your admin route prefix (admin, ceo)
-[YOUR_MAX_AGENTS]   → max concurrent agents (3 recommended)
-```
+| Placeholder | Example |
+|---|---|
+| `[YOUR_COMPANY]` | Acme Corp |
+| `[YOUR_FRAMEWORK]` | Rails 8, Next.js, Django |
+| `[YOUR_DEPLOY_TOOL]` | kamal, capistrano, vercel |
+| `[YOUR_SERVER_IP]` | 10.0.0.1 |
+| `[YOUR_DB]` | PostgreSQL, SQLite |
+| `[YOUR_TOOL]` | mise, rbenv, nvm |
+| `[YOUR_VERSION]` | 3.3.4, 20.x |
 
-Do the same for each agent definition in `.claude/agents/`.
+Do the same for each agent definition in `.claude/agents/`. Delete sections that don't apply to your stack.
 
-### 3. Initialize memory files
+### 3. Create memory files
 
 ```bash
+mkdir -p your-project/agents/state/memory
 for role in coder qa designer product marketing operations; do
-  cat > your-project/agents/state/memory/${role}.md << 'EOF'
-# ${role^} Agent Memory
+  echo "# ${role} Agent Memory
 
 ## Mistakes
 
@@ -97,41 +92,40 @@ for role in coder qa designer product marketing operations; do
 
 ## Stakeholder Feedback
 
-## Session Log
-EOF
+## Session Log" > your-project/agents/state/memory/${role}.md
 done
 ```
 
-### 4. Test with your first agent
+### 4. Run your first agent
 
 ```bash
 cd your-project
 claude --agent coder --print "List the files in this project and describe the architecture"
 ```
 
-## Key Concepts
+## Key Ideas
 
-### Why CLAUDE.md matters
-Claude Code reads `CLAUDE.md` at session start. Every rule there governs agent behavior. A well-maintained CLAUDE.md is the difference between agents that repeat mistakes and agents that learn.
+**CLAUDE.md is the control plane.** Claude Code reads it at session start. Every rule there governs agent behavior — deploy safety, testing requirements, quality gates. A well-maintained CLAUDE.md is the difference between agents that repeat mistakes and agents that learn. The template includes annotated `# WHY` comments so you understand the reasoning behind each rule and can decide what applies to your project.
 
-### Why memory matters
-Without persistent memory, agents start from zero every session. The memory directive ensures agents read their past mistakes and learnings before starting work.
+**Memory prevents repeated failures.** Without persistent memory, agents start from zero every session. The memory directive ensures agents read past mistakes and learnings before starting work, and record new ones when they finish. In our production system, agents repeated identical failures (wrong file formats, skipped tests, incorrect API calls) until memory was added.
 
-### Why operations matters
-The operations agent is the meta-agent — it monitors all other agents and edits their instructions to prevent recurring failures. It's the feedback loop that makes the system self-improving.
+**Operations is the meta-agent.** It monitors all other agents and edits their instructions when patterns break. Agent keeps making the same mistake? Operations rewrites the rule to make it clearer. Quality drifting? Operations tightens the checklist. It's the feedback loop that makes the whole system self-improving.
 
-### Why quality gates matter
-Self-reported "tests passed" is meaningless. Our production system had an agent fabricate test results (Feb 2026). The quality gate rules (exact counts, post-commit testing) exist to make fabrication detectable.
+**Quality gates must be externally verified.** Self-reported "tests passed" is unreliable — our production system had an agent fabricate test results. The kit's quality gate patterns (exact test counts, post-commit verification, separate QA agent review) exist to make shortcuts detectable.
 
-## Adapting to Your Project
+## Adapting to Your Stack
 
-This kit was built for a Rails e-commerce project, but the patterns work for any Claude Code project:
+This kit was built for a Rails project, but the patterns are stack-agnostic:
 
-- **Non-Rails projects**: Adapt the coder agent's quality gates to your stack (pytest, jest, cargo test, etc.)
-- **Non-e-commerce**: The designer/product agents adapt to any creative workflow. Replace the fulfillment references with your output platform.
-- **Solo projects**: Start with just coder + qa + operations. Add more agents as complexity grows.
-- **SaaS projects**: The engineering and security processes apply directly. Add deployment-specific rules to CLAUDE.md.
+- **Any language**: Adapt the coder agent's test/deploy commands to your toolchain (pytest, jest, cargo test, go test)
+- **Any project type**: The designer/product agents work for any creative pipeline. The engineering processes apply to any deployed software.
+- **Solo projects**: Start with just coder + qa + operations. Three agents cover the core loop (build → verify → improve). Add roles as complexity grows.
 
-## Support
+## Links
 
-Questions? Issues? Open a GitHub issue or email [YOUR_SUPPORT_EMAIL].
+- [ultrathink.art/tools](https://ultrathink.art/tools) — where this kit lives
+- [Agent Orchestra CLI](https://github.com/ultrathink-art/agent-orchestra) — companion tool for task queue orchestration
+
+## License
+
+MIT
