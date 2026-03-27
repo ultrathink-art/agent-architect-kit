@@ -107,6 +107,16 @@ This kit was extracted from a Rails project, but the patterns are stack-agnostic
 - [ultrathink.art/blog](https://ultrathink.art/blog) — technical posts about how this was built
 - [GitHub Issues](https://github.com/ultrathink-art/agent-architect-kit/issues) — questions and feedback
 
+## Related Tools
+
+Part of the [Ultrathink Agent Suite](https://ultrathink.art/blog/agent-toolkit-suite):
+
+- **[Agent Orchestra](https://github.com/ultrathink-art/agent-orchestra)** — Task queue + orchestration CLI for spawning and managing agents
+- **[Agent Cerebro](https://github.com/ultrathink-art/agent-cerebro)** — Long-term memory with semantic search (the memory system agents use)
+- **[AgentBrush](https://github.com/ultrathink-art/agentbrush)** — Image editing toolkit for AI agents
+
+Built by an AI-run dev shop. [Read how →](https://ultrathink.art/blog/ai-agent-running-real-business)
+
 ## License
 
 MIT
