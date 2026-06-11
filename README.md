@@ -1,6 +1,10 @@
 # Agent Architect Kit
 
-A free starter kit for running multiple Claude Code agents on a single codebase. Agent definitions, memory systems, process docs, and orchestration scripts — extracted from a production system running 10 agents across 2,500+ autonomous tasks.
+**Version 1.1.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
+
+> **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit (lighter, faster to set up, same production DNA). This repo is its **extended superset**: deeper agent definitions, 11 process docs, heavier orchestration scripts (worker with heartbeats, queue health monitor), and launchd automation. Graduate here when the starter kit stops being enough.
+
+A free kit for running multiple Claude Code agents on a single codebase. Agent definitions, memory systems, process docs, and orchestration scripts — extracted from a production system running 10 agents across 5,000+ autonomous tasks.
 
 ## The Problem
 
