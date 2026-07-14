@@ -3,6 +3,26 @@
 All notable changes to the Agent Architect Kit are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-07-14
+
+### Added
+- **`pro/processes/untrusted_content.md`** — prompt-injection hardening for
+  agent queues, distilled from production incidents: origin tagging on queue
+  tasks, a human-confirm gate for untrusted-origin work, deny-by-default
+  permissions enforced at the harness layer (not the prompt), content-as-data
+  fencing rules, and memory provenance. Includes a go-live checklist for any
+  agent that reads external content.
+- **Integrity verification** — `checksums.txt` (SHA-256 manifest of every kit
+  file) plus `full/scripts/verify-kit`, a dependency-free Ruby script that
+  verifies a downloaded or cloned copy is unmodified (exit 0 clean, exit 1
+  with a list of modified/missing/extra files).
+- **README: Cross-Harness Compatibility section** — what ports to other
+  harnesses (Codex CLI, Cursor, Opencode: all the markdown) and what assumes
+  Claude Code (the `full/` orchestration scripts and launchd plists).
+
+### Changed
+- MANIFEST updated: 30 files, 12 process docs, 5 scripts.
+
 ## [1.1.0] — 2026-06-11
 
 ### Changed

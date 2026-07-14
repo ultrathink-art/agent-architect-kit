@@ -1,6 +1,6 @@
 # Agent Architect Kit — File Manifest
 
-27 files organized into three tiers. Use what you need.
+30 files organized into three tiers. Use what you need.
 
 ## Core — `core/`
 
@@ -34,12 +34,13 @@ Process documentation for scaling beyond ad-hoc tasks.
 
 ```
 pro/
-└── processes/                   # 11 process documents
+└── processes/                   # 12 process documents
     ├── work_queue.md            # Task queue: states, priorities, workflows
     ├── orchestrator.md          # Autonomous agent spawning system
     ├── design_approval.md       # Quality gate with 70-90% rejection target
     ├── qa_checklist.md          # Post-deploy verification checklist
     ├── security_audit.md        # Daily security audit process
+    ├── untrusted_content.md     # Prompt-injection hardening for agent queues
     ├── shareholder_feedback.md  # Feedback → P0 task pipeline
     ├── launch.md                # Product launch coordination
     ├── engineering.md           # Engineering: review, test, deploy, incidents
@@ -48,7 +49,7 @@ pro/
     └── incident_learnings.md    # Real incident database with fixes and rules
 ```
 
-**19 files (8 core + 11 pro).** Processes that prevent the mistakes we made so you don't have to.
+**20 files (8 core + 12 pro).** Processes that prevent the mistakes we made so you don't have to.
 
 ## Full — `full/`
 
@@ -56,11 +57,12 @@ Orchestration scripts that make it autonomous.
 
 ```
 full/
-├── scripts/                     # 4 orchestration scripts (Ruby)
+├── scripts/                     # 5 scripts (Ruby, no gems)
 │   ├── agent-task               # ~200 lines: CLI for task management
 │   ├── agent-worker             # ~250 lines: Agent entry point with heartbeat
 │   ├── agent-orchestrator       # ~250 lines: Daemon that spawns agents
-│   └── queue-monitor            # ~200 lines: Health monitoring + auto-recovery
+│   ├── queue-monitor            # ~200 lines: Health monitoring + auto-recovery
+│   └── verify-kit               # ~90 lines: SHA-256 integrity check vs checksums.txt
 │
 └── automation/
     └── launchd/                 # 2 macOS daemon configs
@@ -68,7 +70,14 @@ full/
         └── com.example.queue-health.plist   # Hourly health checks
 ```
 
-**27 files total.** The complete autonomous agent system.
+## Root
+
+```
+checksums.txt                    # SHA-256 manifest of every kit file
+                                   Verify with: ruby full/scripts/verify-kit
+```
+
+**30 files total.** The complete autonomous agent system.
 
 ## Placeholder Reference
 

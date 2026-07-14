@@ -1,8 +1,8 @@
 # Agent Architect Kit
 
-**Version 1.1.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Version 1.2.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
-> **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit (lighter, faster to set up, same production DNA). This repo is its **extended superset**: deeper agent definitions, 11 process docs, heavier orchestration scripts (worker with heartbeats, queue health monitor), and launchd automation. Graduate here when the starter kit stops being enough.
+> **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit (lighter, faster to set up, same production DNA). This repo is its **extended superset**: deeper agent definitions, 12 process docs, heavier orchestration scripts (worker with heartbeats, queue health monitor), and launchd automation. Graduate here when the starter kit stops being enough.
 
 A free kit for running multiple Claude Code agents on a single codebase. Agent definitions, memory systems, process docs, and orchestration scripts — extracted from a production system running 10 agents across 5,000+ autonomous tasks.
 
@@ -20,9 +20,10 @@ Running AI agents without structure breaks in predictable ways:
 
 - **Agent definitions** for 6 roles (coder, QA, designer, product, marketing, operations) — each with scoped instructions, tool access, and model selection. Ready to customize.
 - **Memory system** — agents read past mistakes and learnings before starting work, and record new ones when they finish. Failures stop repeating.
-- **Process docs** for common workflows — task queues, deploys, security audits, design approval, product launches, incident response. Reference material, not rigid frameworks.
+- **Process docs** for common workflows — task queues, deploys, security audits, untrusted-content hardening, design approval, product launches, incident response. Reference material, not rigid frameworks.
 - **Orchestration scripts** — a daemon that spawns agents from a task queue, monitors health, detects stuck work, and chains follow-up tasks automatically.
 - **A real CLAUDE.md template** (~350 lines) with `[YOUR_VALUE]` placeholders for your stack. Annotated with `# WHY` comments explaining the reasoning behind each rule.
+- **Integrity verification** — a SHA-256 manifest (`checksums.txt`) plus a verify script, so you can confirm your copy of the kit hasn't been tampered with. Agent configs change what your agents do; treat them like a supply chain.
 
 ```
 agent-architect-kit/
@@ -31,13 +32,22 @@ agent-architect-kit/
 │   ├── agents/*.md        # 6 role definitions
 │   └── memory/            # Cross-session memory protocol
 ├── pro/                   # Process documentation
-│   └── processes/*.md     # 11 workflow guides
-└── full/                  # Orchestration automation
-    ├── scripts/           # CLI tools (task queue, worker, monitor)
-    └── automation/        # macOS daemon plists
+│   └── processes/*.md     # 12 workflow guides
+├── full/                  # Orchestration automation
+│   ├── scripts/           # CLI tools (task queue, worker, monitor, verify)
+│   └── automation/        # macOS daemon plists
+└── checksums.txt          # SHA-256 manifest for integrity verification
 ```
 
 ## Quick Start
+
+**0. (Optional) Verify your copy:**
+
+```bash
+ruby full/scripts/verify-kit
+```
+
+Checks every file against `checksums.txt` — exit 0 means your copy matches the release. Exit 1 lists anything modified, missing, or added.
 
 **1. Copy the core files into your project:**
 
@@ -94,6 +104,15 @@ This kit was extracted from a Rails project, but the patterns are stack-agnostic
 - **Any language** — swap test/deploy commands in the coder agent (`pytest`, `jest`, `cargo test`, `go test`)
 - **Any project type** — designer/product agents work for any creative pipeline; engineering processes apply to any deployed software
 - **Solo projects** — start with just coder + QA + operations. Three agents cover the core loop: build, verify, improve. Add roles as complexity grows.
+
+## Cross-Harness Compatibility
+
+The kit is markdown plus a few small Ruby scripts. Most of it is not tied to Claude Code:
+
+- **Portable to any agent harness** — the CLAUDE.md template (rename it to whatever your harness reads: `AGENTS.md`, `.cursorrules`, project instructions), the 6 agent role definitions, the memory directive, and all 12 process docs are plain markdown. They work anywhere an agent reads instructions — Codex CLI, Cursor, Opencode, or your own loop.
+- **Claude Code–specific** — only the `full/` tier assumes Claude Code: the orchestration scripts spawn agents via the `claude` CLI, and the launchd plists are macOS. Porting them means swapping the spawn command; the queue/worker/monitor patterns themselves are harness-agnostic.
+
+No adapters, no plugin system. If your harness reads markdown instructions, the useful 80% of this kit already works there.
 
 ## Key Ideas
 

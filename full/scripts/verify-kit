@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Kit Integrity Verifier
+#
+# WHY THIS EXISTS: Agent configs are a supply-chain surface. A tampered
+# CLAUDE.md or agent definition changes what your agents DO — silently.
+# This script lets you verify a downloaded or cloned copy of the kit is
+# byte-for-byte what was released.
+#
+# Usage: full/scripts/verify-kit              # Verify kit against checksums.txt
+#        full/scripts/verify-kit /path/to/kit # Verify a copy elsewhere
+#        full/scripts/verify-kit --generate   # (maintainers) regenerate checksums.txt
+#
+# Exit codes: 0 = clean, 1 = modified/missing/extra files found.
+
+require "digest"
+
+CHECKSUM_FILE = "checksums.txt"
+IGNORED = [ ".git", ".DS_Store" ].freeze
+
+def kit_root(arg)
+  return File.expand_path(arg) if arg && !arg.start_with?("--")
+
+  File.expand_path("../..", __dir__)
+end
+
+def kit_files(root)
+  Dir.chdir(root) do
+    Dir.glob("**/*", File::FNM_DOTMATCH).select do |path|
+      File.file?(path) &&
+        path != CHECKSUM_FILE &&
+        IGNORED.none? { |ig| path == ig || path.split("/").include?(ig) }
+    end.sort
+  end
+end
+
+def sha256(root, path)
+  Digest::SHA256.file(File.join(root, path)).hexdigest
+end
+
+def generate(root)
+  lines = kit_files(root).map { |path| "#{sha256(root, path)}  #{path}" }
+  File.write(File.join(root, CHECKSUM_FILE), lines.join("\n") + "\n")
+  puts "Wrote #{CHECKSUM_FILE} (#{lines.size} files)"
+end
+
+def verify(root)
+  checksum_path = File.join(root, CHECKSUM_FILE)
+  unless File.exist?(checksum_path)
+    puts "Error: #{CHECKSUM_FILE} not found in #{root}"
+    exit 1
+  end
+
+  expected = {}
+  File.readlines(checksum_path, chomp: true).each do |line|
+    next if line.empty?
+
+    digest, path = line.split(/\s+/, 2)
+    expected[path] = digest
+  end
+
+  actual = kit_files(root)
+  modified = expected.keys.select { |p| actual.include?(p) && sha256(root, p) != expected[p] }
+  missing  = expected.keys - actual
+  extra    = actual - expected.keys
+
+  if modified.empty? && missing.empty? && extra.empty?
+    puts "OK: #{expected.size} files verified, kit is unmodified"
+    exit 0
+  end
+
+  modified.each { |p| puts "MODIFIED: #{p}" }
+  missing.each  { |p| puts "MISSING:  #{p}" }
+  extra.each    { |p| puts "EXTRA:    #{p}" }
+  puts "FAILED: #{modified.size} modified, #{missing.size} missing, #{extra.size} extra"
+  exit 1
+end
+
+if ARGV.include?("--generate")
+  generate(kit_root(ARGV.find { |a| !a.start_with?("--") }))
+else
+  verify(kit_root(ARGV[0]))
+end
