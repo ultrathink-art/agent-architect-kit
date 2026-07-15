@@ -1,6 +1,6 @@
 # Agent Architect Kit
 
-**Version 1.2.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Version 1.3.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 > **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit (lighter, faster to set up, same production DNA). This repo is its **extended superset**: deeper agent definitions, 12 process docs, heavier orchestration scripts (worker with heartbeats, queue health monitor), and launchd automation. Graduate here when the starter kit stops being enough.
 

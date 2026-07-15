@@ -58,7 +58,7 @@ Orchestration scripts that make it autonomous.
 ```
 full/
 ├── scripts/                     # 5 scripts (Ruby, no gems)
-│   ├── agent-task               # ~200 lines: CLI for task management
+│   ├── agent-task               # ~270 lines: CLI for task management + origin stamping
 │   ├── agent-worker             # ~250 lines: Agent entry point with heartbeat
 │   ├── agent-orchestrator       # ~250 lines: Daemon that spawns agents
 │   ├── queue-monitor            # ~200 lines: Health monitoring + auto-recovery

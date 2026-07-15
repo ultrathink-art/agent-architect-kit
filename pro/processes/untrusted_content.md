@@ -112,13 +112,56 @@ Long-term memory derived from untrusted content is marked as such.
 # every agent, every session, indefinitely. Provenance is what lets you
 # audit and purge it.
 
+## What the Shipped Scripts Implement (`full/scripts`)
+
+The kit's scripts ship the **client-side** half of Controls 1 and 2 as a
+reference implementation:
+
+- `agent-task add` stamps `origin` (`internal`/`untrusted`) on every task it
+  creates, keyed off the `AGENT_ROLE` env var — customize the
+  `UNTRUSTED_AGENT_ROLES` list in the script to every role in your system
+  that ingests external content
+- `agent-task ready` refuses to run at all inside an untrusted-role session,
+  refuses untrusted-origin tasks without `--confirm-untrusted`, and sends
+  `confirm_untrusted: true` to the server when a human supplies the flag
+- `agent-task show` surfaces origin so reviewers see provenance
+- `queue-monitor` skips untrusted-origin tasks in its stale-task auto-reset
+  sweep (never promotes them back to ready)
+- `agent-orchestrator` sets `AGENT_ROLE` per spawn — the hook origin
+  stamping keys off. Any custom spawner you add must set it too, or
+  stamping silently no-ops
+
+**The server-side gate is NOT shipped — implement it in your task API.**
+The kit's scripts are API clients against your own queue server; client
+checks are UX, and a bypassed or compromised client skips them all. Your
+server must:
+
+- persist `origin` on task create (default `internal`) and return it on
+  every read the scripts consume (queue list, task show)
+- propagate origin to chained children (`next_tasks`), and spawn
+  untrusted-origin children as `pending`, never auto-ready
+- reject ready/promote calls on untrusted-origin tasks unless the request
+  carries `confirm_untrusted: true` from a human-driven path
+
+# WHY: layered enforcement. The CLI flag makes the human decision
+# deliberate; the server rejection is what makes the control real. If the
+# server accepts a bare ready call on an untrusted task, every client-side
+# check above is decorative.
+
 ## Checklist for a New Exposed Agent
 
-Before an agent that reads external content goes live:
+Before an agent that reads external content goes live (items marked
+*(shipped)* are implemented in `full/scripts`; items marked *(your server)*
+you must port to your task API):
 
 - [ ] Task tool stamps `origin: untrusted` on everything it creates
-- [ ] Chained children inherit untrusted origin
-- [ ] Server rejects auto-ready on untrusted tasks; human confirm flag required
+      *(shipped — `agent-task`; add the role to `UNTRUSTED_AGENT_ROLES`)*
+- [ ] Chained children inherit untrusted origin *(your server)*
+- [ ] Server rejects auto-ready on untrusted tasks; human confirm flag
+      required *(your server; the `--confirm-untrusted` flag is shipped in
+      `agent-task ready`)*
+- [ ] Monitors/auto-ready sweeps skip untrusted tasks *(shipped —
+      `queue-monitor`; port to any other sweep you run)*
 - [ ] Agent spawns through the restricted permission path (verify with a
       canary: try a forbidden tool, confirm the harness blocks it)
 - [ ] Guardrail text precedes every fenced untrusted block

@@ -3,6 +3,24 @@
 All notable changes to the Agent Architect Kit are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-07-15
+
+### Added
+- **Untrusted-origin task controls in the shipped scripts** — v1.2.0's
+  `untrusted_content.md` described origin tagging and the
+  `--confirm-untrusted` human gate, but `full/scripts` didn't implement any
+  of it. Now they do (client side): `agent-task add` stamps
+  `origin: internal|untrusted` from `AGENT_ROLE` (customizable
+  `UNTRUSTED_AGENT_ROLES` list), `agent-task ready` refuses inside
+  untrusted-role sessions and requires `--confirm-untrusted` for
+  untrusted-origin tasks, `agent-task show` surfaces origin, and
+  `queue-monitor` skips untrusted-origin tasks in its auto-reset sweep.
+- **Doc: shipped vs. your-server split** — `untrusted_content.md` gains a
+  "What the Shipped Scripts Implement" section making explicit that the
+  server-side gate (persist origin, propagate to chained children, reject
+  ready without `confirm_untrusted`) must be ported to your own task API;
+  the go-live checklist now marks each item *(shipped)* or *(your server)*.
+
 ## [1.2.0] — 2026-07-14
 
 ### Added

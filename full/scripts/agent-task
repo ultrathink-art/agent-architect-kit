@@ -7,6 +7,9 @@
 #
 # Usage: bin/agent-task add <role> <subject>    # Create new task
 #        bin/agent-task ready <task_id>         # Mark task ready
+#        bin/agent-task ready <task_id> --confirm-untrusted
+#                                               # Human-only: promote a task
+#                                               # created from untrusted content
 #        bin/agent-task claim <role>            # Claim next ready task
 #        bin/agent-task complete <task_id>      # Mark task complete
 #        bin/agent-task list [--all] [--status] [--role] [--search]
@@ -88,6 +91,23 @@ AUTO_CHAINS = {
   "product" => [ { "role" => "qa", "subject_template" => "QA Review: {subject} (from {task_id})" } ]
 }.freeze
 
+# WHY: Origin stamping (pro/processes/untrusted_content.md, Control 1).
+# Any role that processes untrusted external content — inbound email, social
+# feeds, web forms — creates tainted tasks. The spawner (agent-orchestrator)
+# sets AGENT_ROLE per session, so origin is stamped HERE, keyed off which
+# role is running — never off the agent's own judgment. An injected
+# instruction can't talk its way out of a stamp it doesn't control.
+# Customize: list every role in YOUR system that ingests external content.
+UNTRUSTED_AGENT_ROLES = %w[email-triage].freeze
+
+def task_origin_from_env
+  UNTRUSTED_AGENT_ROLES.include?(ENV["AGENT_ROLE"].to_s) ? "untrusted" : "internal"
+end
+
+def untrusted_agent_session?
+  UNTRUSTED_AGENT_ROLES.include?(ENV["AGENT_ROLE"].to_s)
+end
+
 def add_task(role, subject, type = "feature", priority = "P1")
   unless VALID_ROLES.include?(role)
     puts "Error: Invalid role '#{role}'. Valid: #{VALID_ROLES.join(", ")}"
@@ -105,11 +125,18 @@ def add_task(role, subject, type = "feature", priority = "P1")
     end
   end
 
+  # WHY: origin travels WITH the task from creation. Provenance can't be
+  # reconstructed later — an injected task is indistinguishable from a
+  # legitimate one by the time it reaches the queue. Your server must
+  # persist this field and propagate it to chained children (see
+  # pro/processes/untrusted_content.md — the server-side gate is yours
+  # to implement; this CLI stamp is only half the control).
   body = {
     role: role,
     subject: subject,
     task_type: type,
     priority: priority,
+    origin: task_origin_from_env,
     next_tasks: next_tasks
   }
 
@@ -118,13 +145,40 @@ def add_task(role, subject, type = "feature", priority = "P1")
     puts "Created task: #{result["task_id"]} (#{role}, #{priority})"
     puts "  Subject: #{subject}"
     puts "  Chain: #{next_tasks ? next_tasks.map { |t| t["role"] }.join(" → ") : "none"}"
+    if untrusted_agent_session?
+      puts "  Origin: untrusted (stamped from AGENT_ROLE) — will NOT be auto-readied;"
+      puts "          requires explicit human: agent-task ready #{result["task_id"]} --confirm-untrusted"
+    end
   else
     puts "Error: #{result["error"] || "Unknown error"}"
   end
 end
 
-def ready_task(task_id)
-  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/ready")
+def ready_task(task_id, confirm_untrusted: false)
+  # WHY: an agent session that processes untrusted content may CREATE tasks
+  # but must NEVER ready them — that would collapse the human-review boundary
+  # its task-creation channel depends on (untrusted_content.md, Control 2).
+  if untrusted_agent_session?
+    puts "ERROR: AGENT_ROLE=#{ENV["AGENT_ROLE"]} may not ready tasks."
+    puts "  Tasks created from untrusted content require an explicit human ready."
+    exit 1
+  end
+
+  # WHY: untrusted-origin tasks require a deliberate human flag. A
+  # legitimate-looking subject line IS the injection working — slow it down.
+  # This client check is UX; the authoritative rejection must live in your
+  # server's ready endpoint (reject untrusted origin without confirm_untrusted).
+  info = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}")
+  task_info = info["task"] || info
+  if task_info.is_a?(Hash) && task_info["origin"] == "untrusted" && !confirm_untrusted
+    puts "ERROR: Task #{task_id} origin is 'untrusted' (created from external content)."
+    puts "  Review the task carefully. If a human has verified it is legitimate:"
+    puts "  agent-task ready #{task_id} --confirm-untrusted"
+    exit 1
+  end
+
+  body = confirm_untrusted ? { confirm_untrusted: true } : nil
+  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/ready", body)
   if result["status"] == "ready"
     puts "✓ #{task_id} marked ready for orchestrator"
   else
@@ -164,10 +218,13 @@ def show_task(task_id)
   end
 
   task = result["task"] || result
+  origin = task["origin"] || "internal"
+  origin_note = origin == "untrusted" ? " ⚠️  (untrusted content — human ready required)" : ""
   puts "Task: #{task["task_id"]}"
   puts "Role: #{task["role"]}"
   puts "Status: #{task["status"]}"
   puts "Priority: #{task["priority"]}"
+  puts "Origin: #{origin}#{origin_note}"
   puts "Subject: #{task["subject"]}"
   puts "Created: #{task["created_at"]}"
   puts "Notes: #{task["notes"]}" if task["notes"]
@@ -179,7 +236,7 @@ case ARGV[0]
 when "add"
   add_task(ARGV[1], ARGV[2], ARGV[3] || "feature", ARGV[4] || "P1")
 when "ready"
-  ready_task(ARGV[1])
+  ready_task(ARGV[1], confirm_untrusted: ARGV.include?("--confirm-untrusted"))
 when "complete"
   api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{ARGV[1]}/complete")
   puts "✓ #{ARGV[1]} marked complete"
@@ -198,4 +255,7 @@ when "cancel"
 else
   puts "Usage: bin/agent-task <command> [args]"
   puts "Commands: add, ready, complete, list, show, status, cancel"
+  puts "Flags:"
+  puts "  --no-chain            (add) skip auto-chain injection"
+  puts "  --confirm-untrusted   (ready) required for untrusted-origin tasks — human only"
 end

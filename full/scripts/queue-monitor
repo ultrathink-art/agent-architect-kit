@@ -94,6 +94,16 @@ def check_stale_tasks
   claimed_tasks = status[:tasks].select { |t| t["status"] == "claimed" }
 
   claimed_tasks.each do |task|
+    # WHY: NEVER auto-promote untrusted-origin tasks (see
+    # pro/processes/untrusted_content.md, Control 2). reset_task promotes to
+    # "ready" — doing that automatically for a task created from untrusted
+    # external content collapses the human-confirm gate. A human must
+    # re-promote it deliberately: agent-task ready <id> --confirm-untrusted
+    if task["origin"] == "untrusted"
+      puts "SKIP: #{task["task_id"]} — origin untrusted (human ready required)"
+      next
+    end
+
     claimed_at = Time.parse(task["claimed_at"]) rescue nil
     next unless claimed_at
 

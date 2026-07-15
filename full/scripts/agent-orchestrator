@@ -122,6 +122,14 @@ def spawn_agent(task)
     # the env var unless explicitly unset.
     "CLAUDECODE" => nil,
     "AGENT_TASK_ID" => task_id,
+    # WHY: AGENT_ROLE keys origin stamping in agent-task (see
+    # pro/processes/untrusted_content.md, Control 1). A task created by a
+    # session whose role is in UNTRUSTED_AGENT_ROLES is stamped
+    # origin: untrusted at creation. This var MUST be set per-spawn —
+    # if a spawner omits it, stamping silently no-ops and every task
+    # looks internal. Untrusted-origin tasks only reach "ready" (and
+    # therefore this orchestrator) via an explicit human
+    # `agent-task ready <id> --confirm-untrusted`.
     "AGENT_ROLE" => role,
     "AGENT_LOG_FILE" => log_file,
     "AGENT_STATE_FILE" => state_file,
