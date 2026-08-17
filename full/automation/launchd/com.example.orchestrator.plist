@@ -40,6 +40,11 @@
 
     <key>ORCHESTRATOR_API_URL</key>
     <string>https://[YOUR_DOMAIN]</string>
+
+    <!-- Backward-compatible default is claude. Change to codex only after
+         copying the Codex scaffold and running agent-worker --check. -->
+    <key>AGENT_HARNESS</key>
+    <string>claude</string>
   </dict>
 
   <!-- Keep alive: restart on crash -->

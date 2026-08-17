@@ -39,6 +39,9 @@ bin/agent-task add coder "Add analytics" feature P1
   workflow: new_product|feature_dev|content_publish|security_audit
   created: "YYYY-MM-DD"
   blocked_by: [WQ-XXX]  # Optional: task dependencies
+  origin: internal|untrusted
+  next_tasks: []         # Explicit empty array means no-chain opt-out
+  no_chain_reason: null  # Required and persisted for coder/product opt-out
 ```
 
 ### Task States
@@ -90,6 +93,21 @@ next_tasks:
 ```
 
 Chains fire server-side via the completion handler.
+
+### Authoritative QA enforcement
+
+Coder and product tasks receive QA twice by design: client-side default
+injection and a server-side completion check. The completion handler must
+idempotently ensure one QA child even when the task arrived through a raw API or
+another client.
+
+`--no-chain` is valid for coder/product only with a non-empty persisted
+`--no-chain-reason`. The server must reject both a reasonless flag and a raw
+empty `next_tasks: []` bypass. Chained children preserve parent origin, and
+untrusted-origin children remain pending.
+
+See `pro/processes/mandatory_qa_handoffs.md` and the executable reference at
+`full/reference/qa_chain_server.rb`.
 
 ## Escalation
 

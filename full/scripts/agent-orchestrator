@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Agent Orchestrator — Spawns Claude Code agents for queued tasks
+# Agent Orchestrator — Spawns configured agent-harness workers for queued tasks
 #
 # WHY THIS EXISTS: Manual agent management doesn't scale beyond 2-3 tasks/day.
 # The orchestrator polls the work queue and automatically spawns the right agent
@@ -18,14 +18,16 @@ require "json"
 require "time"
 require "net/http"
 require "fileutils"
+require_relative "../lib/harness_adapter"
 
-PROJECT_DIR = File.expand_path("..", __dir__)
+PROJECT_DIR = File.expand_path(ENV.fetch("AGENT_PROJECT_DIR", Dir.pwd))
 AGENT_STATE_DIR = File.join(PROJECT_DIR, "agents/state/agent_runs")
 AGENT_LOGS_DIR = File.join(PROJECT_DIR, "agents/state/agent_logs")
 API_URL = ENV["ORCHESTRATOR_API_URL"] || "https://[YOUR_DOMAIN]"
+API_PREFIX = ENV.fetch("ORCHESTRATOR_API_PREFIX", "/[YOUR_API_PREFIX]").sub(%r{/+$}, "")
 
 # WHY these limits exist:
-# - MAX_CONCURRENT prevents resource exhaustion (each agent = full Claude session)
+# - MAX_CONCURRENT prevents resource exhaustion (each agent = full harness session)
 # - SERIALIZE_ROLES prevents overlapping git pushes and deploys
 # - POLL_INTERVAL balances responsiveness vs API rate limits
 MAX_CONCURRENT_AGENTS = 3
@@ -65,7 +67,7 @@ rescue StandardError => e
 end
 
 def get_ready_tasks
-  data = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  data = api_request(:get, "#{API_PREFIX}/orchestrator/api/queue")
   return [] if data["error"]
   (data["queue"] || []).select { |t| t["status"] == "ready" }
 end
@@ -105,15 +107,28 @@ def spawn_agent(task)
   role = task["role"]
   timestamp = Time.now.strftime("%Y%m%d-%H%M%S")
 
+  # Fail before claiming. A missing executable or role configuration must not
+  # strand a task in claimed state with no worker capable of running it.
+  begin
+    AgentArchitectKit::HarnessAdapter.build(
+      name: ENV.fetch("AGENT_HARNESS", "claude"),
+      role: role,
+      project_dir: PROJECT_DIR
+    ).validate_runtime!
+  rescue StandardError => e
+    puts "Cannot claim #{task_id}: harness preflight failed: #{e.message}"
+    return false
+  end
+
   log_file = File.join(AGENT_LOGS_DIR, "#{task_id}-#{timestamp}.log")
   state_file = File.join(AGENT_STATE_DIR, "#{task_id}.running")
   completion_file = File.join(AGENT_STATE_DIR, "#{task_id}.complete")
 
   # Claim the task first
-  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/claim")
+  result = api_request(:post, "#{API_PREFIX}/orchestrator/api/tasks/#{task_id}/claim")
   unless result["status"] == "claimed"
     puts "Failed to claim #{task_id}: #{result["error"]}"
-    return
+    return false
   end
 
   env = {
@@ -135,6 +150,8 @@ def spawn_agent(task)
     "AGENT_STATE_FILE" => state_file,
     "AGENT_COMPLETION_FILE" => completion_file,
     "AGENT_BRIEF" => task["brief"],
+    "AGENT_HARNESS" => ENV.fetch("AGENT_HARNESS", "claude"),
+    "AGENT_PROJECT_DIR" => PROJECT_DIR,
     "ORCHESTRATOR_API_URL" => API_URL,
     "ORCHESTRATOR_API_TOKEN" => load_token
   }
@@ -160,6 +177,7 @@ def spawn_agent(task)
   }.to_yaml)
 
   puts "Spawned #{role} agent for #{task_id} (pid: #{pid})"
+  true
 end
 
 def process_completions
@@ -173,14 +191,14 @@ def process_completions
     when "completed"
       # WHY: Must call the API complete endpoint (not just update status)
       # because server-side spawn_next_tasks only fires on the complete action.
-      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/complete",
+      api_request(:post, "#{API_PREFIX}/orchestrator/api/tasks/#{task_id}/complete",
                   { notes: state["notes"] })
       puts "Completed: #{task_id}"
     when "needs_review"
-      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/review")
+      api_request(:post, "#{API_PREFIX}/orchestrator/api/tasks/#{task_id}/review")
       puts "Review: #{task_id}"
     when "failed"
-      api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/fail",
+      api_request(:post, "#{API_PREFIX}/orchestrator/api/tasks/#{task_id}/fail",
                   { last_failure: state["notes"] })
       puts "Failed: #{task_id}"
     end
@@ -208,8 +226,9 @@ def run_once
   ready.each do |task|
     break unless can_spawn?(task["role"], running)
 
-    spawn_agent(task)
-    running << { "role" => task["role"] }  # Track locally for concurrency check
+    if spawn_agent(task)
+      running << { "role" => task["role"] }  # Track locally for concurrency check
+    end
   end
 end
 

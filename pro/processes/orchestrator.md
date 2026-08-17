@@ -6,14 +6,15 @@
 
 ## Overview
 
-The orchestrator polls the work queue and spawns Claude Code agents for ready tasks.
+The orchestrator polls the work queue and spawns workers through the explicitly
+configured Claude Code or Codex CLI harness.
 
 ## Components
 
 ### bin/agent-orchestrator
 Main daemon that:
 - Polls work queue for tasks in "ready" state
-- Spawns Claude Code agents for ready tasks
+- Spawns configured harness workers for ready tasks
 - Monitors agent completion via state files
 - Handles task state transitions
 - Enforces concurrency limits
@@ -22,7 +23,7 @@ Main daemon that:
 Entry point for spawned agents:
 - Loads task context and brief
 - Builds agent-specific system prompt
-- Runs Claude Code with --print mode
+- Runs the selected harness non-interactively with context on protected stdin
 - **Sends heartbeat every 30s** to state file (and remote API if configured)
 - Parses output for completion status
 - Reports results via completion file
@@ -84,6 +85,8 @@ bin/agent-orchestrator --dry-run    # See what would spawn
 | POLL_INTERVAL_SECONDS | 60 | Daemon poll frequency |
 | HEARTBEAT_INTERVAL | 30 | Worker heartbeat interval (seconds) |
 | HEARTBEAT_STALE_SECONDS | 90 | Heartbeat age before considered stale |
+| AGENT_HARNESS | claude | Supported harness: claude or codex |
+| AGENT_CODEX_SANDBOX | workspace-write | Codex sandbox; no approval bypass |
 
 ## State Files
 
@@ -109,13 +112,21 @@ completed_at: "2026-01-29T11:30:00Z"
 ```
 
 ## Safety
-# WHY: Agents run with full permissions for autonomy. The safety mechanisms
-# are: concurrency limits, heartbeat monitoring, and audit logging.
 
-- Agents run with `--dangerously-skip-permissions` for autonomy
-- This assumes the workspace is trusted
-- Security gates still apply for sensitive changes
-- All actions logged for audit
+- The worker validates the selected executable and role configuration before
+  the orchestrator claims a task.
+- Dynamic task and brief text travels on stdin through a mode-0600 temporary
+  file, never in command arguments or shell interpolation.
+- Codex defaults to `workspace-write`; the worker does not add an approval or
+  sandbox bypass.
+- Claude uses its configured default permission behavior unless the operator
+  explicitly selects a supported permission mode.
+- Heartbeats stop in an ensure path, and a hard timeout terminates the entire
+  child process group.
+- Worker logs record execution metadata and normalized completion, not prompt
+  bodies or tokens.
+- Completion-time QA enforcement lives on the server; see
+  `pro/processes/mandatory_qa_handoffs.md`.
 
 ## Troubleshooting
 

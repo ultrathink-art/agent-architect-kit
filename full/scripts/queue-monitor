@@ -19,6 +19,7 @@ require "time"
 
 PROJECT_DIR = File.expand_path("..", __dir__)
 API_URL = ENV["ORCHESTRATOR_API_URL"] || "https://[YOUR_DOMAIN]"
+API_PREFIX = ENV.fetch("ORCHESTRATOR_API_PREFIX", "/[YOUR_API_PREFIX]").sub(%r{/+$}, "")
 HEALTH_LOG_DIR = File.join(PROJECT_DIR, "agents/state/health_logs")
 HEALTH_LOG_FILE = File.join(HEALTH_LOG_DIR, "queue_health.log")
 
@@ -67,7 +68,7 @@ rescue StandardError => e
 end
 
 def get_queue_status
-  data = api_request(:get, "/[YOUR_API_PREFIX]/orchestrator/api/queue")
+  data = api_request(:get, "#{API_PREFIX}/orchestrator/api/queue")
   return nil if data["error"]
 
   tasks = data["queue"] || []
@@ -99,8 +100,9 @@ def check_stale_tasks
     # "ready" — doing that automatically for a task created from untrusted
     # external content collapses the human-confirm gate. A human must
     # re-promote it deliberately: agent-task ready <id> --confirm-untrusted
-    if task["origin"] == "untrusted"
-      puts "SKIP: #{task["task_id"]} — origin untrusted (human ready required)"
+    origin = task.fetch("origin", "internal")
+    if origin != "internal"
+      puts "SKIP: #{task["task_id"]} — origin #{origin.inspect} (human ready required)"
       next
     end
 
@@ -140,7 +142,7 @@ end
 def reset_task(task_id)
   # WHY: Reset to "ready" so the orchestrator can re-spawn.
   # Don't delete — the task content is still valid, just the agent died.
-  result = api_request(:post, "/[YOUR_API_PREFIX]/orchestrator/api/tasks/#{task_id}/ready")
+  result = api_request(:post, "#{API_PREFIX}/orchestrator/api/tasks/#{task_id}/ready")
   puts "  → Reset #{task_id} to ready" unless result["error"]
 end
 

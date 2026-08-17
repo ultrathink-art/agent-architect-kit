@@ -125,6 +125,10 @@
   - `--status` - Show running agents
   - `--daemon` - Run continuously
   - `--dry-run` - Show what would be spawned
+- **Harness is explicit** — `AGENT_HARNESS=claude|codex`; default `claude` for
+  backward compatibility. Validate executable + role config BEFORE claim.
+- **Task/brief context goes through stdin or a mode-0600 file** — NEVER shell
+  interpolation, command arguments, or logs. Build commands as argument arrays.
 - **`CLAUDECODE` MUST be unset in every `Process.spawn` for agents** — orchestrator runs inside Claude Code session where `CLAUDECODE=1`. Child agents inherit it → "nested session" crash. Fix: add `"CLAUDECODE" => nil` to env hash.
 # WHY (Feb 2026): 6 tasks affected before fix. Claude Code crashes with
 # "nested session" error when CLAUDECODE env var is inherited.
@@ -139,7 +143,7 @@
 # WHY (Feb 2026): One task retried 319 times when Claude hit a usage limit.
 # Three other tasks retried 148+ times each before fix deployed.
 
-- **Rate limit handling** — detect Claude usage limits in agent-worker and call `fail!`. No global cooldown — rate limits on one agent don't block others.
+- **Rate limit handling** — detect selected-harness usage limits in agent-worker and call `fail!`. No global cooldown — rate limits on one agent don't block others.
 - **Duplicate task prevention**: Before creating any task, query ready+claimed+in_progress for similar subjects.
 
 ### Scheduling & Automation
@@ -183,6 +187,12 @@
 
 - **Task chains**: `next_tasks` field auto-spawns children on complete
   - Chain fires server-side on completion
+- **Client defaults are NOT enforcement** — completion of coder/product work
+  MUST idempotently ensure one QA child server-side, including raw-API tasks.
+- **`--no-chain` audit gate** — coder/product opt-out requires non-empty,
+  persisted `--no-chain-reason`; raw `next_tasks: []` owes the same reason.
+- **Origin inheritance** — chained children copy parent origin; untrusted-origin
+  children stay pending and are never auto-readied.
 # WHY (Feb 2026): Bare completion calls didn't trigger server-side chains →
 # zero chains ever fired until fix.
 

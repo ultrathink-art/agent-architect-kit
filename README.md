@@ -1,144 +1,250 @@
 # Agent Architect Kit
 
-**Version 1.3.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Version 1.4.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
-> **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit (lighter, faster to set up, same production DNA). This repo is its **extended superset**: deeper agent definitions, 12 process docs, heavier orchestration scripts (worker with heartbeats, queue health monitor), and launchd automation. Graduate here when the starter kit stops being enough.
+> **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit. This repository is its extended superset: six role definitions, deeper process docs, an auditable task queue, a dual-harness worker, health monitoring, and launchd automation.
 
-A free kit for running multiple Claude Code agents on a single codebase. Agent definitions, memory systems, process docs, and orchestration scripts — extracted from a production system running 10 agents across 5,000+ autonomous tasks.
+A free kit for running structured Claude Code or Codex CLI agents on one
+codebase. It is extracted from a production system that has processed 5,000+
+autonomous tasks.
 
-## The Problem
+## The problem
 
-Running AI agents without structure breaks in predictable ways:
+Unstructured agents fail predictably:
 
-- **Agents forget everything between sessions** — the same mistakes repeat endlessly
-- **Agents fabricate results** — "tests passed" when they didn't run, quality gates skipped silently
-- **No coordination** — two agents edit the same file, or one deploys while another is mid-test
-- **Rules don't stick** — you re-explain deploy safety, testing requirements, and style guides every session
-- **Bad work ships unchecked** — no independent verification, no audit trail
+- Sessions forget prior mistakes.
+- Agents self-report success without reproducible evidence.
+- Parallel work collides.
+- Safety and deployment rules drift between sessions.
+- A client default promises QA, but another client or raw API silently skips it.
+- A README says a harness is portable while the launcher cannot actually run it.
 
-## What You Get
+## What you get
 
-- **Agent definitions** for 6 roles (coder, QA, designer, product, marketing, operations) — each with scoped instructions, tool access, and model selection. Ready to customize.
-- **Memory system** — agents read past mistakes and learnings before starting work, and record new ones when they finish. Failures stop repeating.
-- **Process docs** for common workflows — task queues, deploys, security audits, untrusted-content hardening, design approval, product launches, incident response. Reference material, not rigid frameworks.
-- **Orchestration scripts** — a daemon that spawns agents from a task queue, monitors health, detects stuck work, and chains follow-up tasks automatically.
-- **A real CLAUDE.md template** (~350 lines) with `[YOUR_VALUE]` placeholders for your stack. Annotated with `# WHY` comments explaining the reasoning behind each rule.
-- **Integrity verification** — a SHA-256 manifest (`checksums.txt`) plus a verify script, so you can confirm your copy of the kit hasn't been tampered with. Agent configs change what your agents do; treat them like a supply chain.
+- **First-class Claude Code and Codex scaffolds** — each uses the project and
+  custom-agent conventions its harness actually reads.
+- **Six roles** — coder, QA, designer, product, marketing, and operations.
+- **One dual-harness worker** — select `claude` or `codex` through
+  `AGENT_HARNESS`; Claude remains the backward-compatible default.
+- **Protected prompt delivery** — task and brief text goes through stdin via a
+  mode-0600 temporary file, never shell interpolation or command arguments.
+- **Fail-closed preflight** — executable, project instructions, role config,
+  sandbox, and permission settings are validated before the orchestrator claims
+  a task.
+- **Auditable QA handoffs** — coder/product opt-outs require a persisted reason,
+  and an executable server reference enforces an idempotent QA child again at
+  completion.
+- **Integrity verification** — `checksums.txt` and `full/scripts/verify-kit`
+  prove whether a source tree or download was modified.
 
-```
+```text
 agent-architect-kit/
-├── core/                  # Agent definitions + project config
-│   ├── CLAUDE.md          # Project instructions template
-│   ├── agents/*.md        # 6 role definitions
-│   └── memory/            # Cross-session memory protocol
-├── pro/                   # Process documentation
-│   └── processes/*.md     # 12 workflow guides
-├── full/                  # Orchestration automation
-│   ├── scripts/           # CLI tools (task queue, worker, monitor, verify)
-│   └── automation/        # macOS daemon plists
-└── checksums.txt          # SHA-256 manifest for integrity verification
+├── core/
+│   ├── CLAUDE.md                 # Claude Code project instructions
+│   ├── agents/*.md               # Claude Code custom agents
+│   ├── memory/                   # shared memory protocol
+│   └── codex/
+│       ├── AGENTS.md             # Codex project instructions
+│       └── .codex/
+│           ├── config.toml
+│           └── agents/*.toml     # Codex custom agents
+├── pro/processes/                # workflow and safety guides
+├── full/
+│   ├── lib/                      # harness + QA-chain contracts
+│   ├── reference/                # executable server reference
+│   ├── scripts/                  # queue, worker, monitor, verify, tests
+│   └── automation/launchd/       # macOS daemon examples
+├── test/                         # hermetic fake-harness regression suite
+└── checksums.txt                 # SHA-256 release manifest
 ```
 
-## Quick Start
+## Verify the kit first
 
-**0. (Optional) Verify your copy:**
+From the kit root:
 
 ```bash
 ruby full/scripts/verify-kit
 ```
 
-Checks every file against `checksums.txt` — exit 0 means your copy matches the release. Exit 1 lists anything modified, missing, or added.
+Exit 0 means every tracked release file matches `checksums.txt`. Exit 1 names
+modified, missing, and unexpected files.
 
-**1. Copy the core files into your project:**
+## Quick start: Claude Code
 
 ```bash
 cp core/CLAUDE.md your-project/CLAUDE.md
 mkdir -p your-project/.claude/agents
 cp core/agents/*.md your-project/.claude/agents/
 cp core/memory/memory-directive.md your-project/.claude/agents/
-```
-
-**2. Replace placeholders** in `CLAUDE.md` and each agent file — search for `[YOUR_VALUE]`:
-
-| Placeholder | Example |
-|---|---|
-| `[YOUR_COMPANY]` | Acme Corp |
-| `[YOUR_FRAMEWORK]` | Rails 8, Next.js, Django |
-| `[YOUR_DEPLOY_TOOL]` | Kamal, Capistrano, Vercel |
-| `[YOUR_DB]` | PostgreSQL, SQLite |
-
-Delete sections that don't apply to your stack.
-
-**3. Create memory files** — one per agent role, in `agents/state/memory/`:
-
-```bash
-mkdir -p your-project/agents/state/memory
-```
-
-Create a file for each role (`coder.md`, `qa.md`, etc.) with sections for Mistakes, Learnings, and Session Log. Agents will read and update these automatically.
-
-**4. Run your first agent:**
-
-```bash
 cd your-project
-claude --agent coder --print "List the files in this project and describe the architecture"
 ```
 
-## Three Levels of Complexity
+Replace `[YOUR_VALUE]` placeholders, then run a no-write configuration smoke:
 
-Pick what fits your needs. You don't have to use everything.
+```bash
+printf 'Reply with: CLAUDE_CONFIG_OK\n' |
+  claude --agent coder --print --permission-mode plan --tools ""
+```
 
-### `core/` — Start here
-Agent definitions + memory. Enough to run specialized agents that learn across sessions. This alone is a major upgrade over a single unstructured agent.
+## Quick start: Codex CLI
 
-### `pro/` — Add coordination
-Process docs for common workflows: task queues, deploy checklists, security audits, design approval, product launches. Copy the ones relevant to your team. Skip the rest.
+```bash
+cp core/codex/AGENTS.md your-project/AGENTS.md
+mkdir -p your-project/.codex
+cp -R core/codex/.codex/. your-project/.codex/
+cd your-project
+```
 
-### `full/` — Go autonomous
-The orchestration daemon, task queue CLI, and health monitoring. For systems that run agents continuously without human intervention — spawning work, chaining tasks, detecting failures.
+Replace `[YOUR_VALUE]` placeholders. The role TOMLs intentionally omit model
+pins so an installed Codex runtime can select a model it supports. Run this
+no-write configuration and authentication smoke:
 
-## Adapting to Your Stack
+```bash
+printf 'Reply with: CODEX_CONFIG_OK\n' |
+  codex exec --strict-config --ephemeral --sandbox read-only -
+```
 
-This kit was extracted from a Rails project, but the patterns are stack-agnostic:
+Codex reads root `AGENTS.md` as project instructions and project-scoped custom
+agents from `.codex/agents/*.toml`. Each included role defines `name`,
+`description`, and `developer_instructions`; there is no Claude frontmatter,
+Claude tool list, import syntax, or Claude model alias in the Codex scaffold.
 
-- **Any language** — swap test/deploy commands in the coder agent (`pytest`, `jest`, `cargo test`, `go test`)
-- **Any project type** — designer/product agents work for any creative pipeline; engineering processes apply to any deployed software
-- **Solo projects** — start with just coder + QA + operations. Three agents cover the core loop: build, verify, improve. Add roles as complexity grows.
+## Install the full worker
 
-## Cross-Harness Compatibility
+Copy only the runtime files into an existing project root:
 
-The kit is markdown plus a few small Ruby scripts. Most of it is not tied to Claude Code:
+```bash
+mkdir -p your-project/bin your-project/lib
+cp full/scripts/agent-task full/scripts/agent-worker \
+  full/scripts/agent-orchestrator full/scripts/queue-monitor your-project/bin/
+cp full/lib/harness_adapter.rb full/lib/qa_chain_contract.rb your-project/lib/
+chmod +x your-project/bin/agent-task your-project/bin/agent-worker \
+  your-project/bin/agent-orchestrator your-project/bin/queue-monitor
+cd your-project
+```
 
-- **Portable to any agent harness** — the CLAUDE.md template (rename it to whatever your harness reads: `AGENTS.md`, `.cursorrules`, project instructions), the 6 agent role definitions, the memory directive, and all 12 process docs are plain markdown. They work anywhere an agent reads instructions — Codex CLI, Cursor, Opencode, or your own loop.
-- **Claude Code–specific** — only the `full/` tier assumes Claude Code: the orchestration scripts spawn agents via the `claude` CLI, and the launchd plists are macOS. Porting them means swapping the spawn command; the queue/worker/monitor patterns themselves are harness-agnostic.
+Claude Code remains the default. Make the harness explicit and preflight it:
 
-No adapters, no plugin system. If your harness reads markdown instructions, the useful 80% of this kit already works there.
+```bash
+export AGENT_HARNESS=claude
+export AGENT_ROLE=coder
+bin/agent-worker --check
+```
 
-## Key Ideas
+For Codex:
 
-**CLAUDE.md is the control plane.** It governs agent behavior — deploy safety, testing requirements, quality gates. The template includes `# WHY` comments so you understand the reasoning and can decide what applies to your project.
+```bash
+export AGENT_HARNESS=codex
+export AGENT_ROLE=coder
+bin/agent-worker --check
+```
 
-**Memory prevents repeated failures.** Without it, agents start from zero every session. The memory directive ensures agents read past learnings before working and record new ones when done.
+Configuration boundaries:
 
-**Operations is the meta-agent.** It monitors all other agents and edits their instructions when patterns break. Agent keeps making the same mistake? Operations rewrites the rule. It's the feedback loop that makes the system self-improving.
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_HARNESS` | `claude` | Supported values: `claude`, `codex` |
+| `CLAUDE_BIN` | `claude` | Claude executable override |
+| `CODEX_BIN` | `codex` | Codex executable override |
+| `AGENT_PROJECT_DIR` | current directory | Project root used by worker/orchestrator |
+| `AGENT_CODEX_SANDBOX` | `workspace-write` | Codex sandbox; no approval bypass is added |
+| `AGENT_CLAUDE_PERMISSION_MODE` | `default` | Optional explicit Claude permission mode |
+| `AGENT_TIMEOUT_SECONDS` | `3600` | Hard child-process deadline |
+| `ORCHESTRATOR_API_URL` | placeholder | Authenticated queue API origin |
+| `ORCHESTRATOR_API_PREFIX` | placeholder | Queue API path prefix |
 
-**Quality gates must be externally verified.** Self-reported results are unreliable. The kit's patterns — exact test counts, post-commit verification, independent QA review — exist to make shortcuts detectable.
+Task and brief bodies never appear in the constructed command. The worker
+loads Codex role `developer_instructions` from the selected project TOML as a
+runtime configuration layer, while dynamic task context stays on protected
+stdin. It normalizes both harnesses to the same final-line protocol:
+
+```text
+TASK_COMPLETE: <verified outcome>
+NEEDS_REVIEW: <what requires review>
+BLOCKED: <blocker and next action>
+```
+
+## Mandatory, auditable QA handoffs
+
+The client adds QA by default for coder and product work:
+
+```bash
+bin/agent-task add coder "Implement signed downloads" feature P1
+```
+
+An opt-out must state a reason that the server persists:
+
+```bash
+bin/agent-task add coder "Commit documentation only" feature P1 \
+  --no-chain \
+  --no-chain-reason "Documentation-only change with no executable behavior"
+```
+
+Client injection is not the authority. Port
+`full/lib/qa_chain_contract.rb` and
+`full/reference/qa_chain_server.rb` into your authenticated task endpoints.
+The server must:
+
+1. Reject a coder/product empty chain or `no_chain` request without a non-empty
+   reason.
+2. Persist the reason and a `NO-CHAIN OPT-OUT` audit note.
+3. On completion, idempotently ensure exactly one QA child exists unless that
+   valid opt-out is present.
+4. Copy parent origin to every child and keep non-internal-origin children
+   pending instead of auto-readying them.
+
+See [pro/processes/mandatory_qa_handoffs.md](pro/processes/mandatory_qa_handoffs.md)
+for the endpoint contract and audit checklist.
+
+## Test the shipped contracts
+
+The suite uses fake harness executables and a local fake HTTP server. It makes no
+live agent call and no external write:
+
+```bash
+ruby full/scripts/test-kit
+ruby full/reference/qa_chain_server.rb
+```
+
+It covers command arrays, protected stdin context, missing binary/config errors,
+completion normalization, heartbeat shutdown, timeout process-group cleanup,
+client QA defaults, reasonless rejection, persisted opt-out payloads, origin
+propagation, and completion-time idempotency.
+
+## Three levels of complexity
+
+### `core/` — role instructions
+
+Choose the Claude Code or Codex scaffold. Add only the roles you use.
+
+### `pro/` — coordination
+
+Adopt the workflow guides relevant to your stack: queue transitions, QA,
+security, untrusted content, launch, and incident learning.
+
+### `full/` — autonomous execution
+
+Install the queue client, worker, orchestrator, health monitor, server contract,
+and optional macOS launchd examples.
+
+## Compatibility scope
+
+- **Supported and tested:** Claude Code project/role setup and worker command;
+  Codex CLI project/custom-agent setup and worker command.
+- **Portable patterns:** memory and process Markdown can be adapted to other
+  harnesses.
+- **Not claimed:** Cursor, OpenCode, or other launchers are not configured or
+  exercised by this release.
+- **Platform-specific:** the launchd examples are macOS-only; the Ruby scripts
+  themselves use the standard library.
 
 ## Links
 
-- [ultrathink.art](https://ultrathink.art) — the store this system runs
-- [ultrathink.art/blog](https://ultrathink.art/blog) — technical posts about how this was built
-- [GitHub Issues](https://github.com/ultrathink-art/agent-architect-kit/issues) — questions and feedback
-
-## Related Tools
-
-Part of the [Ultrathink Agent Suite](https://ultrathink.art/blog/agent-toolkit-suite):
-
-- **[Agent Orchestra](https://github.com/ultrathink-art/agent-orchestra)** — Task queue + orchestration CLI for spawning and managing agents
-- **[Agent Cerebro](https://github.com/ultrathink-art/agent-cerebro)** — Long-term memory with semantic search (the memory system agents use)
-- **[AgentBrush](https://github.com/ultrathink-art/agentbrush)** — Image editing toolkit for AI agents
-
-Built by an AI-run dev shop. [Read how →](https://ultrathink.art/blog/ai-agent-running-real-business)
+- [ultrathink.art](https://ultrathink.art)
+- [GitHub Issues](https://github.com/ultrathink-art/agent-architect-kit/issues)
+- [Agent Orchestra](https://github.com/ultrathink-art/agent-orchestra)
+- [Agent Cerebro](https://github.com/ultrathink-art/agent-cerebro)
+- [AgentBrush](https://github.com/ultrathink-art/agentbrush)
 
 ## License
 

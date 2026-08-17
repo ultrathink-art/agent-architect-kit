@@ -3,6 +3,40 @@
 All notable changes to the Agent Architect Kit are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-08-17
+
+### Added
+
+- **First-class Codex setup** — `core/codex/AGENTS.md`, project
+  `.codex/config.toml`, and six project-scoped `.codex/agents/*.toml` roles use
+  Codex-native instruction and custom-agent conventions without Claude
+  frontmatter, tool lists, imports, or model aliases.
+- **Dual-harness worker adapter** — `AGENT_HARNESS=claude|codex` selects an
+  argument-array command while keeping Claude as the default. Task and brief
+  context is delivered through a protected stdin file; Codex defaults to the
+  workspace-write sandbox without an approval bypass.
+- **Pre-claim harness validation** — the orchestrator now checks executable,
+  project instructions, role config, and sandbox/permission configuration
+  before claiming a queued task. `agent-worker --check` provides the same
+  no-write preflight for setup.
+- **Auditable mandatory QA contract** — coder/product `--no-chain` now requires
+  `--no-chain-reason`, forwards both fields, and surfaces the reason. The
+  executable framework-neutral server reference rejects raw empty-chain
+  bypasses, persists an audit note, and idempotently guarantees one QA child at
+  completion while preserving origin and keeping untrusted children pending.
+- **Hermetic product test suite** — fake harnesses and a local fake API cover
+  command construction, protected prompt delivery, configuration failures,
+  completion normalization, heartbeat and timeout cleanup, client QA defaults,
+  opt-out persistence, and completion-time idempotency.
+
+### Changed
+
+- README compatibility claims now distinguish supported/tested Claude and Codex
+  paths from merely portable Markdown patterns, with fresh setup and no-write
+  smoke commands for both harnesses.
+- Orchestrator and work-queue docs now define the authoritative server-side QA
+  handoff and provenance contract.
+
 ## [1.3.0] — 2026-07-15
 
 ### Added

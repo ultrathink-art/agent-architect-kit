@@ -1,0 +1,12 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "json"
+
+File.write(ENV.fetch("FAKE_PID_FILE"), Process.pid.to_s) if ENV["FAKE_PID_FILE"]
+File.write(ENV.fetch("FAKE_ARGV_FILE"), JSON.generate(ARGV)) if ENV["FAKE_ARGV_FILE"]
+prompt = $stdin.read
+File.write(ENV.fetch("FAKE_PROMPT_FILE"), prompt) if ENV["FAKE_PROMPT_FILE"]
+sleep Float(ENV.fetch("FAKE_SLEEP_SECONDS", "0"))
+puts ENV.fetch("FAKE_OUTPUT", "TASK_COMPLETE: fake harness finished")
+exit Integer(ENV.fetch("FAKE_EXIT_STATUS", "0"))
