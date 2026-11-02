@@ -1,6 +1,6 @@
 # Agent Architect Kit
 
-**Version 1.4.0** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Version 1.4.1** · See [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 > **New here? Start with the [Agent Starter Kit Pro](https://ultrathink.art/items/250)** — the canonical free starter kit. This repository is its extended superset: six role definitions, deeper process docs, an auditable task queue, a dual-harness worker, health monitoring, and launchd automation.
 
@@ -163,6 +163,13 @@ TASK_COMPLETE: <verified outcome>
 NEEDS_REVIEW: <what requires review>
 BLOCKED: <blocker and next action>
 ```
+
+The signal must be the final nonblank line, start at column one, contain a
+nonempty summary, and appear outside a Markdown code fence. Quoted examples
+and earlier markers cannot complete a task. A failed or timed-out harness is
+always reported as failed, even if it printed a success marker. A successful
+harness without a valid final signal requires review. This validates the
+reporting protocol; independent QA still verifies the claimed outcome.
 
 ## Mandatory, auditable QA handoffs
 

@@ -3,6 +3,18 @@
 All notable changes to the Agent Architect Kit are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] — 2026-11-02
+
+### Fixed
+
+- **Truthful worker completion** — a nonzero harness exit now fails the task
+  even when output contains a success marker. Only the final nonblank line
+  can report completion; quoted, indented, fenced, empty, or superseded
+  markers require review instead of silently completing work. This backports
+  the reporting boundary learned from internal orchestration false positives.
+- Regression coverage includes real fake-harness subprocess exits for both
+  supported adapters and Markdown examples that must not become task results.
+
 ## [1.4.0] — 2026-08-17
 
 ### Added

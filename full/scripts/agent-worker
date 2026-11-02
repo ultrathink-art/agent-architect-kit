@@ -33,14 +33,23 @@ AGENT_KILL_GRACE_SECONDS = Float(ENV.fetch("AGENT_KILL_GRACE_SECONDS", "5"))
 
 module AgentArchitectKit
   module CompletionContract
-    SIGNAL = /^\s*(TASK_COMPLETE|NEEDS_REVIEW|BLOCKED):\s*(.*?)\s*$/i
+    SIGNAL = /\A(TASK_COMPLETE|NEEDS_REVIEW|BLOCKED):[ \t]*(\S[^\r\n]*?)[ \t]*\z/i
 
     module_function
 
     def normalize(output, status:, timed_out: false)
       return { result: "failed", notes: "Harness timed out and its process group was terminated" } if timed_out
 
-      signal = output.to_s.each_line.filter_map { |line| line.match(SIGNAL) }.last
+      unless status.success?
+        notes = if output.to_s.match?(/hit your limit|out of extra usage|rate limit|quota exceeded/i)
+          "Harness usage or rate limit reached"
+        else
+          "Harness exited with status #{status.exitstatus.inspect}"
+        end
+        return { result: "failed", notes: notes }
+      end
+
+      signal = final_signal(output)
       if signal
         notes = signal[2].to_s.strip
         notes = "See worker completion evidence" if notes.empty?
@@ -52,13 +61,26 @@ module AgentArchitectKit
         return { result: result, notes: notes }
       end
 
-      if !status.success? && output.to_s.match?(/hit your limit|out of extra usage|rate limit|quota exceeded/i)
-        { result: "failed", notes: "Harness usage or rate limit reached" }
-      elsif status.success?
-        { result: "needs_review", notes: "No completion signal found" }
-      else
-        { result: "failed", notes: "Harness exited with status #{status.exitstatus.inspect}" }
+      { result: "needs_review", notes: "No valid final completion signal found" }
+    end
+
+    def final_signal(output)
+      fence = nil
+      signal = nil
+      output.to_s.each_line do |raw_line|
+        line = raw_line.chomp
+        next if line.strip.empty?
+
+        signal = nil
+        if fence
+          fence = nil if line.match?(/\A {0,3}#{Regexp.escape(fence[0])}{#{fence.length},}[ \t]*\z/)
+        elsif (opening = line.match(/\A {0,3}(`{3,}|~{3,})/))
+          fence = opening[1]
+        else
+          signal = line.match(SIGNAL)
+        end
       end
+      signal
     end
   end
 

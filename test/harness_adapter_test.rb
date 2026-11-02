@@ -149,6 +149,58 @@ class HarnessAdapterTest < Minitest::Test
     assert_raises(Errno::ESRCH) { Process.kill(0, pid) }
   end
 
+  def test_failed_harness_cannot_complete_a_task
+    failure = Struct.new(:success?, :exitstatus).new(false, 7)
+
+    result = AgentArchitectKit::CompletionContract.normalize(
+      "TASK_COMPLETE: claimed success\n", status: failure
+    )
+
+    assert_equal "failed", result[:result]
+    assert_includes result[:notes], "7"
+  end
+
+  def test_only_the_last_nonblank_line_can_report_completion
+    success = Struct.new(:success?, :exitstatus).new(true, 0)
+    [
+      "TASK_COMPLETE: earlier claim\nActually, verification failed.\n",
+      "```text\nTASK_COMPLETE: example\n```\n",
+      "```text\nTASK_COMPLETE: unclosed example\n",
+      "~~~~text\nTASK_COMPLETE: example\n~~~\nTASK_COMPLETE: still fenced\n",
+      "    TASK_COMPLETE: indented code example\n",
+      "> TASK_COMPLETE: quoted claim\n",
+      "TASK_COMPLETE:   \n"
+    ].each do |output|
+      assert_equal "needs_review", AgentArchitectKit::CompletionContract.normalize(
+        output, status: success
+      )[:result], output.inspect
+    end
+
+    assert_equal "completed", AgentArchitectKit::CompletionContract.normalize(
+      "```text\nexample\n```\nTASK_COMPLETE: verified\n\n", status: success
+    )[:result]
+  end
+
+  def test_both_harnesses_fail_even_when_they_print_a_success_marker
+    %w[claude codex].each do |name|
+      adapter = AgentArchitectKit::HarnessAdapter.build(
+        name: name, role: "coder", project_dir: @root,
+        env: adapter_env(name).merge(
+          "FAKE_OUTPUT" => "TASK_COMPLETE: claimed success",
+          "FAKE_EXIT_STATUS" => "7"
+        )
+      )
+      execution = AgentArchitectKit::HarnessRunner.new(
+        timeout_seconds: 5, kill_grace_seconds: 0.1
+      ).run(adapter: adapter, context: "failure regression")
+
+      assert_equal 7, execution.status.exitstatus
+      assert_equal "failed", AgentArchitectKit::CompletionContract.normalize(
+        execution.output, status: execution.status, timed_out: execution.timed_out
+      )[:result]
+    end
+  end
+
   def test_heartbeat_stops_without_leaving_a_thread
     writes = 0
     heartbeat = AgentArchitectKit::Heartbeat.new(interval: 0.01) { writes += 1 }.start

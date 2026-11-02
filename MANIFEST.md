@@ -1,6 +1,6 @@
 # Agent Architect Kit — File Manifest
 
-Version 1.4.0 contains **49 files** across the root and three product tiers.
+Version 1.4.1 contains **49 files** across the root and three product tiers.
 `checksums.txt` covers the other 48 files; it excludes itself by design.
 
 ## Core — `core/` (16 files)
